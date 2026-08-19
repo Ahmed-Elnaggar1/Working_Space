@@ -12,9 +12,7 @@
   for now: the network calls, data-consistency, and local-dev overhead aren't
   worth it at this team size, and it would slow down learning the core skill
   (clean module boundaries) by introducing distributed-systems problems too
-  early. The module boundaries in §4 are kept strict specifically so a module
-  can be peeled out into its own service later as a deliberate Phase 2/3
-  exercise, without a rewrite.
+  early.
 
 ---
 
@@ -24,23 +22,24 @@ This document defines the technical design for the MVP scope described in the PR
 
 ## 2. High-Level Architecture
 
+![](../utils/arch.png)
 See the architecture diagram above. In short: a single client app talks to an application server, which owns all business logic (auth, permission checks, channel/file management, chat, bot orchestration) and talks to three backing stores plus an external LLM API.
 
-**Why one application server instead of separate microservices for v1:** at this scale (small team, learning project), a modular monolith is faster to build and reason about, and avoids premature distributed-systems complexity. Internally it should still be organized into clearly separated modules (see §4) so it *can* be split into services later without a rewrite.
+**Why one application server instead of separate microservices for v1:** at this scale (small team, learning project), a modular monolith is faster to build and reason about, and avoids premature distributed-systems complexity. Internally it should still be organized into clearly separated modules (see §4) so it _can_ be split into services later without a rewrite.
 
 ## 3. Tech Stack (finalized for v1)
 
-| Layer | Choice | Notes |
-|---|---|---|
-| Frontend | React + Next.js | SPA-style workspace/channel UI |
-| Backend | Python (FastAPI) | Chosen over Node so the RAG/ingestion pipeline lives in the same language as the API — fewer moving parts |
-| Auth | JWT (access + refresh tokens) | Email/password for v1; OAuth/SSO deferred |
-| Primary DB | PostgreSQL | Users, workspaces, channels, memberships, roles, messages, file metadata |
-| Vector store | pgvector extension (inside the same Postgres) | Keeps infra to one database for v1; revisit if scale demands a dedicated vector DB |
-| File storage | S3-compatible object storage (MinIO locally, S3 in prod) | Actual file bytes never live in Postgres |
-| Realtime chat | WebSockets (FastAPI's native WS support) | Per-channel chat delivery |
-| LLM | Claude API | Used for the bot's answer generation, grounded in retrieved chunks |
-| Ingestion | `unstructured` / `pypdf` for parsing, custom chunker | Must preserve page/section metadata for citations |
+| Layer         | Choice                                                   | Notes                                                                                                     |
+| ------------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Frontend      | React + Next.js                                          | SPA-style workspace/channel UI                                                                            |
+| Backend       | Python (FastAPI)                                         | Chosen over Node so the RAG/ingestion pipeline lives in the same language as the API — fewer moving parts |
+| Auth          | JWT (access + refresh tokens)                            | Email/password for v1; OAuth/SSO deferred                                                                 |
+| Primary DB    | PostgreSQL                                               | Users, workspaces, channels, memberships, roles, messages, file metadata                                  |
+| Vector store  | pgvector extension (inside the same Postgres)            | Keeps infra to one database for v1; revisit if scale demands a dedicated vector DB                        |
+| File storage  | S3-compatible object storage (MinIO locally, S3 in prod) | Actual file bytes never live in Postgres                                                                  |
+| Realtime chat | WebSockets (FastAPI's native WS support)                 | Per-channel chat delivery                                                                                 |
+| LLM           | Claude API                                               | Used for the bot's answer generation, grounded in retrieved chunks                                        |
+| Ingestion     | `unstructured` / `pypdf` for parsing, custom chunker     | Must preserve page/section metadata for citations                                                         |
 
 ## 4. Backend Module Breakdown
 
@@ -114,6 +113,7 @@ erDiagram
 ```
 
 Notes:
+
 - `MEMBERSHIPS.role` is per-channel (e.g. `admin`, `member`, `read_only`) — this is what makes channel isolation and per-channel permissions actually work, rather than a single workspace-wide role.
 - `CHUNKS.page_number` is what makes bot citations possible — this must never be dropped during ingestion.
 - `CHUNKS.embedding` uses pgvector's `vector` column type.
@@ -159,21 +159,7 @@ Notes:
 ## 11. What This Enables Later (Phase 2, per PRD §7)
 
 Because ingestion, permissions, and the bot are already modular:
+
 - Summarization = a new bot mode that pulls all chunks for a file (still permission-scoped) instead of top-k search results.
 - Cross-channel search = a new query path that unions multiple channels the user belongs to, still filtered by membership.
 - Swapping pgvector for a dedicated vector DB = only the `ingestion` and `bot` modules change; nothing else touches the vector store directly.
-
-## 12. Resolved Decisions (previously open questions)
-
-- **Expected scale:** designed for a small team (single-digit to low-dozens
-  of members, a handful of channels) for v1. pgvector is sufficient at this
-  scale — revisit only if usage grows well past this.
-- **Deployment target:** local Docker Compose for development now;
-  self-hosted vs cloud deployment is a Phase 2 decision, not needed for
-  Sprint 0/1.
-
-## 13. Next Steps
-
-1. Review this with your collaborators alongside the PRD.
-2. Break §4 (module breakdown) and §6–7 (permissions + RAG pipeline) into **epics**.
-3. Turn epics into sprint-sized tickets — this is the natural next document to write together.
