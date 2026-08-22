@@ -4,16 +4,16 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 
-class WorkspaceCreate(BaseModel):
+class ChannelCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
 
 
-class WorkspaceResponse(BaseModel):
+class ChannelResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
+    workspace_id: UUID
     name: str
-    owner_id: UUID
     created_at: datetime
 
     @field_serializer("created_at")

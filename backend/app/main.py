@@ -8,11 +8,13 @@ files, chat, bot...) gets built out, its router gets included here.
 
 from fastapi import FastAPI
 
+from app.channels.routes import router as channels_router
 from app.workspaces.routes import router as workspaces_router
 
 app = FastAPI(title="Vault API", version="0.1.0")
 
 app.include_router(workspaces_router)
+app.include_router(channels_router)
 
 
 @app.get("/health")
