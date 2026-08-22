@@ -61,6 +61,6 @@ users 1--many refresh_tokens
 ## Open decisions
 
 - Exact embedding model and vector dimension
-- Alembic migration layout
+- Alembic migrations live in `backend/migrations/`, with configuration in `backend/alembic.ini`.
 - Whether messages and files use soft deletion
 - Retention and backup policy
