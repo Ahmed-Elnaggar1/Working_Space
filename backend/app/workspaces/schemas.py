@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
@@ -20,4 +20,4 @@ class WorkspaceResponse(BaseModel):
     def serialize_created_at(self, value: datetime) -> str:
         if value.tzinfo is None:
             value = value.replace(tzinfo=datetime.UTC)
-        return value.astimezone(datetime.UTC).isoformat()
+        return value.astimezone(timezone.utc).isoformat()
