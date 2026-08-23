@@ -50,7 +50,7 @@ This project is also being built as a learning exercise: to practice running a r
 
 - Create a workspace.
 - Create/delete/rename channels within a workspace.
-- Assign members to channels with a role (`admin`, `member`, or `read_only`); the workspace owner has full control.
+- Assign members to channels with a role (`owner`, `admin`, `member`, or `read_only`); the workspace owner has full control.
 - Channel isolation: a user only sees channels they're a member of.
 
 ### 6.2 Files & Materials
