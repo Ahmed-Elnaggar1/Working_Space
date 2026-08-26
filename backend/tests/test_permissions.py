@@ -15,32 +15,37 @@ from app.main import app
 from app.models import Channel, Membership, Role, User, Workspace
 from app.permissions import require_role
 
-# Create a dummy router to test the dependency integration
 permissions_dummy_router = APIRouter(prefix="/test-permissions-auth")
 
 
-@permissions_dummy_router.get(
-    "/channels/{channel_id}/view",
-    dependencies=[Depends(require_role("view_channel"))],
-)
-def dummy_view_channel_endpoint(channel_id: UUID):
+MATRIX_ROUTES = {
+    "view_channel": ("get", "view-channel"),
+    "view_messages": ("get", "view-messages"),
+    "send_messages": ("post", "send-messages"),
+    "ask_bot": ("post", "ask-bot"),
+    "view_files": ("get", "view-files"),
+    "upload_files": ("post", "upload-files"),
+    "delete_own_file": ("delete", "delete-own-file"),
+    "delete_any_file": ("delete", "delete-any-file"),
+    "add_remove_members": ("post", "add-remove-members"),
+    "change_member_roles": ("patch", "change-member-roles"),
+    "rename_channel": ("patch", "rename-channel"),
+    "delete_channel": ("delete", "delete-channel"),
+    "manage_workspace_owner": ("patch", "manage-workspace-owner"),
+}
+
+
+def matrix_endpoint(channel_id: UUID):
     return {"status": "authorized"}
 
 
-@permissions_dummy_router.post(
-    "/channels/{channel_id}/send-message",
-    dependencies=[Depends(require_role("send_messages"))],
-)
-def dummy_send_message_endpoint(channel_id: UUID):
-    return {"status": "authorized"}
-
-
-@permissions_dummy_router.delete(
-    "/channels/{channel_id}/delete",
-    dependencies=[Depends(require_role("delete_channel"))],
-)
-def dummy_delete_channel_endpoint(channel_id: UUID):
-    return {"status": "authorized"}
+for action, (method, path_name) in MATRIX_ROUTES.items():
+    permissions_dummy_router.add_api_route(
+        f"/channels/{{channel_id}}/{path_name}",
+        matrix_endpoint,
+        methods=[method.upper()],
+        dependencies=[Depends(require_role(action))],
+    )
 
 
 @pytest.fixture(scope="module")
@@ -89,7 +94,7 @@ def test_require_role_channel_not_found(client: TestClient, db_session: Session)
     assert response.status_code == 404
     body = response.json()
     assert body["error"]["code"] == "NOT_FOUND"
-    assert body["error"]["message"] == "Channel not found"
+    assert body["error"]["message"] == "Not Found"
 
 
 def test_require_role_non_member(client: TestClient, db_session: Session):
@@ -118,33 +123,67 @@ def test_require_role_non_member(client: TestClient, db_session: Session):
     assert body["error"]["code"] == "NOT_FOUND"
 
 
-@pytest.mark.parametrize(
-    "role, action, expected_status",
-    [
-        # Read-only role tests
-        (Role.READ_ONLY, "view", 200),
-        (Role.READ_ONLY, "send-message", 403),
-        (Role.READ_ONLY, "delete", 403),
-        # Member role tests
-        (Role.MEMBER, "view", 200),
-        (Role.MEMBER, "send-message", 200),
-        (Role.MEMBER, "delete", 403),
-        # Admin role tests
-        (Role.ADMIN, "view", 200),
-        (Role.ADMIN, "send-message", 200),
-        (Role.ADMIN, "delete", 403),
-        # Owner role tests
-        (Role.OWNER, "view", 200),
-        (Role.OWNER, "send-message", 200),
-        (Role.OWNER, "delete", 200),
-    ],
-)
+ROLE_ACTION_MATRIX = [
+    (Role.OWNER, action, action in {
+        "view_channel",
+        "view_messages",
+        "send_messages",
+        "ask_bot",
+        "view_files",
+        "upload_files",
+        "delete_own_file",
+        "delete_any_file",
+        "add_remove_members",
+        "change_member_roles",
+        "rename_channel",
+        "delete_channel",
+        "manage_workspace_owner",
+    })
+    for action in MATRIX_ROUTES
+] + [
+    (Role.ADMIN, action, action in {
+        "view_channel",
+        "view_messages",
+        "send_messages",
+        "ask_bot",
+        "view_files",
+        "upload_files",
+        "delete_own_file",
+        "delete_any_file",
+        "add_remove_members",
+        "change_member_roles",
+        "rename_channel",
+    })
+    for action in MATRIX_ROUTES
+] + [
+    (Role.MEMBER, action, action in {
+        "view_channel",
+        "view_messages",
+        "send_messages",
+        "ask_bot",
+        "view_files",
+        "upload_files",
+        "delete_own_file",
+    })
+    for action in MATRIX_ROUTES
+] + [
+    (Role.READ_ONLY, action, action in {
+        "view_channel",
+        "view_messages",
+        "ask_bot",
+        "view_files",
+    })
+    for action in MATRIX_ROUTES
+]
+
+
+@pytest.mark.parametrize("role, action, allowed", ROLE_ACTION_MATRIX)
 def test_role_matrix_enforcement(
     client: TestClient,
     db_session: Session,
     role: Role,
     action: str,
-    expected_status: int,
+    allowed: bool,
 ):
     user = User(email=f"user-{role.value}@example.com", password_hash="dummy")
     db_session.add(user)
@@ -164,15 +203,12 @@ def test_role_matrix_enforcement(
     db_session.add(membership)
     db_session.commit()
 
-    if action == "view":
-        response = client.get(f"/test-permissions-auth/channels/{channel.id}/view")
-    elif action == "send-message":
-        response = client.post(f"/test-permissions-auth/channels/{channel.id}/send-message")
-    elif action == "delete":
-        response = client.delete(f"/test-permissions-auth/channels/{channel.id}/delete")
+    method, path_name = MATRIX_ROUTES[action]
+    request = getattr(client, method)
+    response = request(f"/test-permissions-auth/channels/{channel.id}/{path_name}")
 
-    assert response.status_code == expected_status
+    assert response.status_code == (200 if allowed else 403)
 
-    if expected_status == 403:
+    if not allowed:
         body = response.json()
         assert body["error"]["code"] == "FORBIDDEN"
