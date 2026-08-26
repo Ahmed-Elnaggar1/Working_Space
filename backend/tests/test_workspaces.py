@@ -12,6 +12,7 @@ from app.db import Base, get_db
 from app.main import app
 
 
+
 @pytest.fixture
 def client() -> Generator[TestClient, None, None]:
     engine = create_engine(
