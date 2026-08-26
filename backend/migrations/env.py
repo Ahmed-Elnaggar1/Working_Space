@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 from logging.config import fileConfig
 import os
 
@@ -5,14 +6,22 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from app.db import Base
-import app.models
+from app import models  # noqa: F401
 
 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
+from dotenv import load_dotenv
+load_dotenv()
+
 config.set_main_option("sqlalchemy.url", os.getenv("DATABASE_URL", config.get_main_option("sqlalchemy.url")))
+db_url = config.get_main_option("sqlalchemy.url")
+if db_url and db_url.startswith("postgresql://"):
+    db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
+    config.set_main_option("sqlalchemy.url", db_url)
+
 target_metadata = Base.metadata
 
 

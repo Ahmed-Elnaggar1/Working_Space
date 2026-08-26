@@ -32,8 +32,6 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=utc_now),
         sa.UniqueConstraint("email", name="uq_users_email"),
     )
-    op.create_index("ix_users_email", "users", ["email"])
-
     op.create_table(
         "workspaces",
         sa.Column("id", uuid_type(), primary_key=True, server_default=generated_uuid),
@@ -82,5 +80,4 @@ def downgrade() -> None:
     op.drop_index("ix_channels_workspace_id", table_name="channels")
     op.drop_table("channels")
     op.drop_table("workspaces")
-    op.drop_index("ix_users_email", table_name="users")
     op.drop_table("users")

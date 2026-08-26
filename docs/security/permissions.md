@@ -42,3 +42,4 @@ The database query itself must include the channel scope. Never retrieve all chu
 - Role changes take effect on the next authorization check.
 - The system must never include private resource names or content in denial responses.
 - Authorization tests must cover every role and both allowed and denied outcomes.
+- `GET /channels/{channel_id}` returns `404 Not Found` for non-members so private channel existence is not disclosed. This applies consistently to channel-scoped read endpoints added in Sprint 2.
