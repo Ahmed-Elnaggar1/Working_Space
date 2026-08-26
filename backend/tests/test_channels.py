@@ -109,3 +109,109 @@ def test_unknown_channel_returns_not_found(client: TestClient) -> None:
     response = client.get(f"/channels/{uuid4()}")
 
     assert response.status_code == 404
+
+
+def test_add_channel_member_success(client: TestClient) -> None:
+    workspace_id = create_workspace(client)
+    created = client.post(f"/workspaces/{workspace_id}/channels", json={"name": "Backend"})
+    channel_id = created.json()["id"]
+
+    # Create another user in DB
+    new_user_id = uuid4()
+    with app.state.test_session_factory() as session:
+        from app.models import User
+        new_user = User(id=new_user_id, email="newuser@example.com", password_hash="dummy")
+        session.add(new_user)
+        session.commit()
+
+    # Admin/Owner adds the new user as member
+    response = client.post(
+        f"/channels/{channel_id}/members",
+        json={"user_id": str(new_user_id), "role": "member"},
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["user_id"] == str(new_user_id)
+    assert body["channel_id"] == channel_id
+    assert body["role"] == "member"
+
+
+def test_add_channel_member_denied_for_member(client: TestClient) -> None:
+    workspace_id = create_workspace(client)
+    created = client.post(f"/workspaces/{workspace_id}/channels", json={"name": "Backend"})
+    channel_id = created.json()["id"]
+
+    # Make current user a normal member (not owner/admin)
+    member_user_id = uuid4()
+    with app.state.test_session_factory() as session:
+        from app.models import User
+        member_user = User(id=member_user_id, email="memberuser@example.com", password_hash="dummy")
+        session.add(member_user)
+        session.flush()
+
+        # Remove default owner membership and replace with member role
+        session.query(Membership).filter_by(channel_id=UUID(channel_id)).delete()
+        session.add(Membership(user_id=member_user_id, channel_id=UUID(channel_id), role="member"))
+        session.commit()
+
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(id=member_user_id)
+
+    # Try to add a new member as a restricted role
+    response = client.post(
+        f"/channels/{channel_id}/members",
+        json={"user_id": str(uuid4()), "role": "member"},
+    )
+    assert response.status_code == 403
+
+
+def test_update_channel_member_role_success(client: TestClient) -> None:
+    workspace_id = create_workspace(client)
+    created = client.post(f"/workspaces/{workspace_id}/channels", json={"name": "Backend"})
+    channel_id = created.json()["id"]
+
+    # Add a member
+    member_id = uuid4()
+    with app.state.test_session_factory() as session:
+        from app.models import User
+        u = User(id=member_id, email="member@example.com", password_hash="dummy")
+        session.add(u)
+        session.flush()
+        session.add(Membership(user_id=member_id, channel_id=UUID(channel_id), role="member"))
+        session.commit()
+
+    # Update role to read_only
+    response = client.patch(
+        f"/channels/{channel_id}/members/{member_id}",
+        json={"role": "read_only"},
+    )
+    assert response.status_code == 200
+    assert response.json()["role"] == "read_only"
+
+
+def test_delete_channel_member_success_denies_subsequent_access(client: TestClient) -> None:
+    workspace_id = create_workspace(client)
+    created = client.post(f"/workspaces/{workspace_id}/channels", json={"name": "Backend"})
+    channel_id = created.json()["id"]
+
+    # Add a member
+    member_id = uuid4()
+    with app.state.test_session_factory() as session:
+        from app.models import User
+        u = User(id=member_id, email="member@example.com", password_hash="dummy")
+        session.add(u)
+        session.flush()
+        session.add(Membership(user_id=member_id, channel_id=UUID(channel_id), role="member"))
+        session.commit()
+
+    # Check member can access
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(id=member_id)
+    assert client.get(f"/channels/{channel_id}").status_code == 200
+
+    # Owner removes member
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(id=DEV_USER_ID)
+    response = client.delete(f"/channels/{channel_id}/members/{member_id}")
+    assert response.status_code == 204
+
+    # Verification: member should now be denied access (returns 404 due to confidentiality)
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(id=member_id)
+    assert client.get(f"/channels/{channel_id}").status_code == 404

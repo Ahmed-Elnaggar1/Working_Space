@@ -1,14 +1,21 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import CurrentUser, get_current_user
 from app.db import get_db
-from app.models import Channel, Membership, Role, Workspace
-from app.channels.schemas import ChannelCreate, ChannelResponse
+from app.models import Channel, Membership, Role, User, Workspace
+from app.channels.schemas import (
+    ChannelCreate,
+    ChannelResponse,
+    MembershipCreate,
+    MembershipResponse,
+    MembershipUpdate,
+)
+from app.permissions import require_role
 
 router = APIRouter(tags=["channels"])
 
@@ -79,3 +86,96 @@ def get_channel(
     if channel is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
     return channel
+
+
+@router.post(
+    "/channels/{channel_id}/members",
+    response_model=MembershipResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_role("add_remove_members"))],
+)
+def add_channel_member(
+    channel_id: UUID,
+    payload: MembershipCreate,
+    db: Session = Depends(get_db),
+) -> Membership:
+    # Verify user exists
+    user = db.scalar(select(User).where(User.id == payload.user_id))
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    # Verify if user is already a member
+    existing_membership = db.scalar(
+        select(Membership).where(
+            Membership.user_id == payload.user_id,
+            Membership.channel_id == channel_id,
+        )
+    )
+    if existing_membership:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="User is already a member of this channel",
+        )
+
+    membership = Membership(
+        user_id=payload.user_id,
+        channel_id=channel_id,
+        role=payload.role.value,
+    )
+    db.add(membership)
+    db.commit()
+    db.refresh(membership)
+    return membership
+
+
+@router.patch(
+    "/channels/{channel_id}/members/{user_id}",
+    response_model=MembershipResponse,
+    dependencies=[Depends(require_role("change_member_roles"))],
+)
+def update_channel_member_role(
+    channel_id: UUID,
+    user_id: UUID,
+    payload: MembershipUpdate,
+    db: Session = Depends(get_db),
+) -> Membership:
+    # Find membership
+    membership = db.scalar(
+        select(Membership).where(
+            Membership.user_id == user_id,
+            Membership.channel_id == channel_id,
+        )
+    )
+    if not membership:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership not found")
+
+    membership.role = payload.role.value
+    db.commit()
+    db.refresh(membership)
+    return membership
+
+
+@router.delete(
+    "/channels/{channel_id}/members/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_role("add_remove_members"))],
+)
+def remove_channel_member(
+    channel_id: UUID,
+    user_id: UUID,
+    db: Session = Depends(get_db),
+):
+    # Find membership
+    membership = db.scalar(
+        select(Membership).where(
+            Membership.user_id == user_id,
+            Membership.channel_id == channel_id,
+        )
+    )
+    if not membership:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership not found")
+
+    db.delete(membership)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
