@@ -5,6 +5,8 @@ from uuid import UUID, uuid4
 from sqlalchemy import DateTime, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import CHAR, TypeDecorator
+from pgvector.sqlalchemy import Vector
+
 
 from app.db import Base
 
@@ -76,23 +78,6 @@ class Channel(Base):
     memberships: Mapped[list["Membership"]] = relationship(
         back_populates="channel", cascade="all, delete-orphan"
     )
-    files: Mapped[list["File"]] = relationship(
-        back_populates="channel", cascade="all, delete-orphan"
-    )
-
-
-class File(Base):
-    __tablename__ = "files"
-
-    id: Mapped[UUID] = mapped_column(GUID(), primary_key=True, default=uuid4)
-    channel_id: Mapped[UUID] = mapped_column(ForeignKey("channels.id"), nullable=False)
-    filename: Mapped[str] = mapped_column(String(255), nullable=False)
-    storage_path: Mapped[str] = mapped_column(String(512), nullable=False)
-    uploaded_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
-    ingestion_status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
-
-    channel: Mapped[Channel] = relationship(back_populates="files")
 
 
 class Membership(Base):
@@ -119,3 +104,34 @@ class RefreshToken(Base):
     token_hash: Mapped[str] = mapped_column(Text, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class File(Base):
+    __tablename__ = "files"
+
+    id: Mapped[UUID] = mapped_column(GUID(), primary_key=True, default=uuid4)
+    channel_id: Mapped[UUID] = mapped_column(ForeignKey("channels.id", ondelete="CASCADE"), nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    storage_path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    uploaded_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    ingestion_status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
+    ingestion_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    channel: Mapped["Channel"] = relationship(back_populates="files")
+    chunks: Mapped[list["Chunk"]] = relationship(back_populates="file", cascade="all, delete-orphan")
+
+
+class Chunk(Base):
+    __tablename__ = "chunks"
+
+    id: Mapped[UUID] = mapped_column(GUID(), primary_key=True, default=uuid4)
+    file_id: Mapped[UUID] = mapped_column(ForeignKey("files.id", ondelete="CASCADE"), nullable=False)
+    channel_id: Mapped[UUID] = mapped_column(ForeignKey("channels.id", ondelete="CASCADE"), nullable=False)
+    page_number: Mapped[int | None] = mapped_column(nullable=True)
+    section: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(Vector(1536), nullable=False)
+
+    file: Mapped["File"] = relationship(back_populates="chunks")
+
