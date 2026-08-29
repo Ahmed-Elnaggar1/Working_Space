@@ -76,6 +76,23 @@ class Channel(Base):
     memberships: Mapped[list["Membership"]] = relationship(
         back_populates="channel", cascade="all, delete-orphan"
     )
+    files: Mapped[list["File"]] = relationship(
+        back_populates="channel", cascade="all, delete-orphan"
+    )
+
+
+class File(Base):
+    __tablename__ = "files"
+
+    id: Mapped[UUID] = mapped_column(GUID(), primary_key=True, default=uuid4)
+    channel_id: Mapped[UUID] = mapped_column(ForeignKey("channels.id"), nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    storage_path: Mapped[str] = mapped_column(String(512), nullable=False)
+    uploaded_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    ingestion_status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    channel: Mapped[Channel] = relationship(back_populates="files")
 
 
 class Membership(Base):
