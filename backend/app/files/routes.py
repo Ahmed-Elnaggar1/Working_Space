@@ -1,17 +1,26 @@
 import io
 from uuid import UUID, uuid4
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, BackgroundTasks, status, Response
+
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import CurrentUser, get_current_user
 from app.db import get_db
-from app.models import File, Membership
-from app.permissions import require_role
+from app.files.schemas import FileResponse
 from app.files.storage import storage
 from app.ingestion.pipeline import run_ingestion_pipeline
-from app.files.schemas import FileResponse
+from app.models import File, Membership
+from app.permissions import require_role
 
 router = APIRouter(tags=["files"])
 
@@ -29,32 +38,22 @@ async def upload_file(
     db: Session = Depends(get_db),
     _membership: Membership = Depends(require_role("upload_files")),
 ):
-    """Uploads a file to a channel.
-    
-    Verifies that the caller has upload permission. Saves file metadata,
-    uploads the file bytes to S3 object storage, and queues the text ingestion
-    pipeline as a background task.
-    """
     file_id = uuid4()
     content = await file.read()
-    
-    # Generate S3 key path
-    storage_path = f"channels/{channel_id}/{file_id}/{file.filename}"
-    
+    storage_path = f"channels/{channel_id}/{file_id}/{file.filename or 'upload'}"
+
     try:
-        # Upload bytes to S3/MinIO
-        storage.upload_file(storage_path, content, file.content_type)
-    except Exception as e:
+        storage.upload_file(storage_path, content, file.content_type or "application/octet-stream")
+    except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to store uploaded file: {str(e)}"
-        )
+            detail=f"Failed to store uploaded file: {str(exc)}",
+        ) from exc
 
-    # Save metadata row
     file_record = File(
         id=file_id,
         channel_id=channel_id,
-        filename=file.filename,
+        filename=file.filename or "upload",
         storage_path=storage_path,
         uploaded_by=current_user.id,
         ingestion_status="pending",
@@ -64,10 +63,19 @@ async def upload_file(
     db.commit()
     db.refresh(file_record)
 
-    # Queue background task to parse, chunk, embed, and store in vector db
     background_tasks.add_task(run_ingestion_pipeline, file_record.id)
 
-    return file_record
+    return {
+        "id": file_record.id,
+        "channel_id": file_record.channel_id,
+        "filename": file_record.filename,
+        "file_name": file_record.filename,
+        "storage_path": file_record.storage_path,
+        "uploaded_by": file_record.uploaded_by,
+        "ingestion_status": file_record.ingestion_status,
+        "ingestion_error": file_record.ingestion_error,
+        "created_at": file_record.created_at,
+    }
 
 
 @router.get(
@@ -79,12 +87,21 @@ def list_files(
     db: Session = Depends(get_db),
     _membership: Membership = Depends(require_role("view_files")),
 ):
-    """Lists files uploaded to a channel.
-    
-    Requires channel membership and view files permission.
-    """
     files = db.scalars(select(File).where(File.channel_id == channel_id)).all()
-    return files
+    return [
+        {
+            "id": record.id,
+            "channel_id": record.channel_id,
+            "filename": record.filename,
+            "file_name": record.filename,
+            "storage_path": record.storage_path,
+            "uploaded_by": record.uploaded_by,
+            "ingestion_status": record.ingestion_status,
+            "ingestion_error": record.ingestion_error,
+            "created_at": record.created_at,
+        }
+        for record in files
+    ]
 
 
 @router.get(
@@ -96,26 +113,17 @@ def download_file(
     db: Session = Depends(get_db),
     _membership: Membership = Depends(require_role("view_files")),
 ):
-    """Downloads a file's raw content.
-    
-    Verifies both file channel context and membership before downloading.
-    """
-    file_record = db.scalar(
-        select(File).where(File.id == file_id, File.channel_id == channel_id)
-    )
+    file_record = db.scalar(select(File).where(File.id == file_id, File.channel_id == channel_id))
     if not file_record:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="File not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
 
     try:
         file_bytes = storage.download_file(file_record.storage_path)
-    except Exception as e:
+    except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"File content not found in storage: {str(e)}"
-        )
+            detail=f"File content not found in storage: {str(exc)}",
+        ) from exc
 
     return StreamingResponse(
         io.BytesIO(file_bytes),
@@ -135,112 +143,22 @@ def retry_ingestion(
     db: Session = Depends(get_db),
     _membership: Membership = Depends(require_role("upload_files")),
 ):
-    """Retries parsing and embedding ingestion for a failed upload.
-    
-    Clears out any previous ingestion attempts and restarts the pipeline.
-    """
-    file_record = db.scalar(
-        select(File).where(File.id == file_id, File.channel_id == channel_id)
-    )
+    file_record = db.scalar(select(File).where(File.id == file_id, File.channel_id == channel_id))
     if not file_record:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="File not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
 
     if file_record.ingestion_status != "failed":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only failed file ingestions can be retried"
+            detail="Only failed file ingestions can be retried",
         )
 
-    # Reset metadata back to pending
     file_record.ingestion_status = "pending"
     file_record.ingestion_error = None
     db.commit()
     db.refresh(file_record)
 
-    # Queue background task to retry the ingestion pipeline
     background_tasks.add_task(run_ingestion_pipeline, file_record.id)
-
-    return file_record
-from pathlib import Path
-from uuid import UUID, uuid4
-
-from fastapi import APIRouter, Depends, File as FastFile, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse
-from sqlalchemy import select
-from sqlalchemy.orm import Session
-
-from app.auth.dependencies import CurrentUser, get_current_user
-from app.db import get_db
-from app.models import Channel, File, Membership
-from app.permissions import require_role
-
-router = APIRouter(tags=["files"])
-
-
-def _require_channel_membership(db: Session, current_user: CurrentUser, channel_id: UUID) -> Channel:
-    channel = db.scalar(
-        select(Channel)
-        .join(Membership, Membership.channel_id == Channel.id)
-        .where(Channel.id == channel_id, Membership.user_id == current_user.id)
-    )
-    if channel is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
-    return channel
-
-
-def _require_file_access(db: Session, current_user: CurrentUser, channel_id: UUID, file_id: UUID) -> File:
-    file_record = db.scalar(select(File).where(File.id == file_id, File.channel_id == channel_id))
-    if file_record is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
-
-    membership = db.scalar(
-        select(Membership).where(
-            Membership.user_id == current_user.id,
-            Membership.channel_id == channel_id,
-        )
-    )
-    if membership is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
-    return file_record
-
-
-@router.post(
-    "/channels/{channel_id}/files",
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_role("upload_files"))],
-)
-def upload_file(
-    channel_id: UUID,
-    file: UploadFile = FastFile(...),
-    current_user: CurrentUser = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _require_channel_membership(db, current_user, channel_id)
-
-    allowed_types = {"text/plain", "application/pdf"}
-    if file.content_type not in allowed_types and not (
-        file.filename and file.filename.lower().endswith((".txt", ".pdf"))
-    ):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Unsupported file type")
-
-    storage_root = Path("/tmp") / "vault-storage"
-    storage_root.mkdir(parents=True, exist_ok=True)
-    staged_path = storage_root / f"{uuid4()}-{file.filename or 'upload'}"
-    staged_path.write_bytes(file.file.read())
-
-    file_record = File(
-        channel_id=channel_id,
-        filename=file.filename or "upload",
-        storage_path=str(staged_path),
-        uploaded_by=current_user.id,
-        ingestion_status="pending",
-    )
-    db.add(file_record)
-    db.commit()
-    db.refresh(file_record)
 
     return {
         "id": file_record.id,
@@ -250,51 +168,9 @@ def upload_file(
         "storage_path": file_record.storage_path,
         "uploaded_by": file_record.uploaded_by,
         "ingestion_status": file_record.ingestion_status,
+        "ingestion_error": file_record.ingestion_error,
         "created_at": file_record.created_at,
     }
-
-
-@router.get(
-    "/channels/{channel_id}/files",
-    dependencies=[Depends(require_role("view_files"))],
-)
-def list_files(
-    channel_id: UUID,
-    current_user: CurrentUser = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _require_channel_membership(db, current_user, channel_id)
-    files = db.scalars(select(File).where(File.channel_id == channel_id)).all()
-    return [
-        {
-            "id": record.id,
-            "channel_id": record.channel_id,
-            "filename": record.filename,
-            "file_name": record.filename,
-            "storage_path": record.storage_path,
-            "uploaded_by": record.uploaded_by,
-            "ingestion_status": record.ingestion_status,
-            "created_at": record.created_at,
-        }
-        for record in files
-    ]
-
-
-@router.get(
-    "/channels/{channel_id}/files/{file_id}/download",
-    dependencies=[Depends(require_role("view_files"))],
-)
-def download_file(
-    channel_id: UUID,
-    file_id: UUID,
-    current_user: CurrentUser = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    file_record = _require_file_access(db, current_user, channel_id, file_id)
-    path = Path(file_record.storage_path)
-    if not path.exists():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
-    return FileResponse(path=path, filename=file_record.filename)
 
 
 @router.delete(
@@ -306,8 +182,11 @@ def delete_file(
     file_id: UUID,
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
+    _membership: Membership = Depends(require_role("delete_own_file")),
 ):
-    file_record = _require_file_access(db, current_user, channel_id, file_id)
+    file_record = db.scalar(select(File).where(File.id == file_id, File.channel_id == channel_id))
+    if file_record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
 
     membership = db.scalar(
         select(Membership).where(
@@ -326,9 +205,11 @@ def delete_file(
     elif membership.role not in {"owner", "admin"}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied")
 
-    storage_path = Path(file_record.storage_path)
-    if storage_path.exists():
-        storage_path.unlink()
+    try:
+        storage.delete_file(file_record.storage_path)
+    except Exception:
+        pass
+
     db.delete(file_record)
     db.commit()
-    return None
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

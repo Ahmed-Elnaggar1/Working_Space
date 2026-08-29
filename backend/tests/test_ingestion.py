@@ -1,5 +1,4 @@
 from collections.abc import Generator
-import io
 from uuid import UUID, uuid4
 
 import pytest

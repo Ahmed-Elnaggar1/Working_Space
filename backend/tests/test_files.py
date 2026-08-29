@@ -10,7 +10,7 @@ from sqlalchemy.pool import StaticPool
 from app.auth.dependencies import CurrentUser, DEV_USER_ID, get_current_user
 from app.db import Base, get_db
 from app.main import app
-from app.models import Channel, Membership, Role, User, Workspace
+from app.models import Membership, Role, User
 
 
 @pytest.fixture

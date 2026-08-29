@@ -78,6 +78,9 @@ class Channel(Base):
     memberships: Mapped[list["Membership"]] = relationship(
         back_populates="channel", cascade="all, delete-orphan"
     )
+    files: Mapped[list["File"]] = relationship(
+        back_populates="channel", cascade="all, delete-orphan"
+    )
 
 
 class Membership(Base):
