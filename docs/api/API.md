@@ -122,6 +122,10 @@ Returns files visible to the caller in that channel.
 
 Streams a file only after verifying both the file's channel and the caller's membership.
 
+### `POST /channels/{channel_id}/files/{file_id}/retry-ingestion`
+
+Retries the ingestion process for a failed file. Requires upload files permission. Returns the updated file metadata with the ingestion status set back to `pending`.
+
 ## Chat
 
 ### `GET /channels/{channel_id}/messages`

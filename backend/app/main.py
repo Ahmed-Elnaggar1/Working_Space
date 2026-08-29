@@ -12,6 +12,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.auth.routes import router as auth_router
 from app.channels.routes import router as channels_router
 from app.workspaces.routes import router as workspaces_router
+from app.files.routes import router as files_router
 
 app = FastAPI(title="Vault API", version="0.1.0")
 
@@ -19,6 +20,7 @@ app = FastAPI(title="Vault API", version="0.1.0")
 app.include_router(auth_router)
 app.include_router(workspaces_router)
 app.include_router(channels_router)
+app.include_router(files_router)
 
 # Global Exception Handlers to match API.md contract
 @app.exception_handler(StarletteHTTPException)
