@@ -1,10 +1,12 @@
 import hashlib
 import math
+import os
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.bot.llm import PlaceholderLLMClient, generate_answer, get_llm_api_key
 from app.models import Chunk
 
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
@@ -85,6 +87,9 @@ __all__ = [
     "CHUNK_EMBEDDING_DIMENSION",
     "QUESTION_EMBEDDING_DIMENSION",
     "RETRIEVAL_TOP_K",
+    "PlaceholderLLMClient",
     "embed_question",
+    "generate_answer",
+    "get_llm_api_key",
     "search_channel_chunks",
 ]
