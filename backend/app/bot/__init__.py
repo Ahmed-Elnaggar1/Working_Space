@@ -5,8 +5,18 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.bot.llm import PlaceholderLLMClient, generate_answer, get_llm_api_key
-from app.models import Chunk
+from app.bot.llm import (
+    ClaudeClient,
+    LLMError,
+    LLMServiceError,
+    LLMTimeoutError,
+    OllamaClient,
+    PlaceholderLLMClient,
+    build_llm_client,
+    generate_answer,
+    get_llm_api_key,
+)
+from app.models import Chunk, File
 
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 CHUNK_EMBEDDING_DIMENSION = 384
@@ -69,7 +79,11 @@ def search_channel_chunks(
 ) -> list[Chunk]:
     """Return the top-k chunks in a specific channel, ranked by cosine similarity."""
     query_vector = embed_question(question)
-    statement = select(Chunk).where(Chunk.channel_id == channel_id)
+    statement = (
+        select(Chunk)
+        .join(File, Chunk.file_id == File.id)
+        .where(Chunk.channel_id == channel_id, File.ingestion_status == "completed")
+    )
     chunks = db.scalars(statement).all()
 
     scored_chunks = []
@@ -100,7 +114,13 @@ __all__ = [
     "QUESTION_EMBEDDING_DIMENSION",
     "RETRIEVAL_TOP_K",
     "INSUFFICIENT_EVIDENCE_THRESHOLD",
+    "ClaudeClient",
+    "LLMError",
+    "LLMServiceError",
+    "LLMTimeoutError",
+    "OllamaClient",
     "PlaceholderLLMClient",
+    "build_llm_client",
     "embed_question",
     "generate_answer",
     "get_llm_api_key",

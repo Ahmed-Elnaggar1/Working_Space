@@ -1,9 +1,10 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.bot import generate_answer, search_channel_chunks
+from app.bot.llm import LLMError, LLMServiceError, LLMTimeoutError
 from app.bot.schemas import AskRequest, AskResponse
 from app.db import get_db
 from app.permissions import require_role
@@ -35,4 +36,15 @@ def ask_channel(
         }
         for chunk in chunks
     ]
-    return generate_answer(payload.question, chunk_context)
+    try:
+        return generate_answer(payload.question, chunk_context)
+    except LLMTimeoutError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail=str(exc),
+        ) from exc
+    except (LLMServiceError, LLMError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc

@@ -33,6 +33,9 @@ async def custom_http_exception_handler(request: Request, exc: StarletteHTTPExce
         409: "CONFLICT",
         422: "VALIDATION_ERROR",
         500: "INTERNAL_SERVER_ERROR",
+        502: "BAD_GATEWAY",
+        503: "SERVICE_UNAVAILABLE",
+        504: "GATEWAY_TIMEOUT",
     }
     code = code_map.get(exc.status_code, "ERROR")
     return JSONResponse(
@@ -56,6 +59,20 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
                 "code": "VALIDATION_ERROR",
                 "message": "Validation failed",
                 "details": exc.errors(),
+                "request_id": str(uuid.uuid4()),
+            }
+        },
+    )
+
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "error": {
+                "code": "INTERNAL_SERVER_ERROR",
+                "message": "An unexpected error occurred.",
                 "request_id": str(uuid.uuid4()),
             }
         },
