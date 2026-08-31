@@ -1,6 +1,5 @@
 import hashlib
 import math
-import os
 from uuid import UUID
 
 from sqlalchemy import select
