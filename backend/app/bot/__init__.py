@@ -76,6 +76,7 @@ def search_channel_chunks(
     channel_id: UUID,
     question: str,
     limit: int = RETRIEVAL_TOP_K,
+    min_score: float | None = None,
 ) -> list[Chunk]:
     """Return the top-k chunks in a specific channel, ranked by cosine similarity."""
     query_vector = embed_question(question)
@@ -93,6 +94,8 @@ def search_channel_chunks(
         scored_chunks.append((similarity, chunk))
 
     scored_chunks.sort(key=lambda item: item[0], reverse=True)
+    if min_score is not None and should_return_insufficient_evidence(scored_chunks, threshold=min_score):
+        return []
     return [chunk for _, chunk in scored_chunks[:limit]]
 
 

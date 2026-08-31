@@ -3,7 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.bot import generate_answer, search_channel_chunks
+from app.bot import INSUFFICIENT_EVIDENCE_THRESHOLD, generate_answer, search_channel_chunks
 from app.bot.llm import LLMError, LLMServiceError, LLMTimeoutError
 from app.bot.schemas import AskRequest, AskResponse
 from app.db import get_db
@@ -22,7 +22,12 @@ def ask_channel(
     payload: AskRequest,
     db: Session = Depends(get_db),
 ) -> dict:
-    chunks = search_channel_chunks(db, channel_id, payload.question)
+    chunks = search_channel_chunks(
+        db,
+        channel_id,
+        payload.question,
+        min_score=INSUFFICIENT_EVIDENCE_THRESHOLD,
+    )
     if not chunks:
         return generate_answer(payload.question, [])
 

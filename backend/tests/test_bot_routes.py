@@ -348,3 +348,101 @@ def test_llm_error_returns_documented_error_shape(client: TestClient) -> None:
     assert "status 500" in body["error"]["message"]
     assert UUID(body["error"]["request_id"])  # Validates request_id is a UUID string
 
+
+def test_question_with_no_relevant_materials_returns_insufficient_evidence(client: TestClient) -> None:
+    """S4-04: Question with no relevant materials (below similarity threshold) returns insufficient_evidence."""
+    with client.app.state.test_session_factory() as session:
+        user = User(id=DEV_USER_ID, email="irrelevant@example.com", password_hash="hash")
+        session.add(user)
+        workspace = Workspace(id=uuid4(), name="Space", owner_id=user.id)
+        channel = Channel(id=uuid4(), workspace_id=workspace.id, name="General")
+        session.add_all([workspace, channel])
+        session.add(Membership(user_id=user.id, channel_id=channel.id, role=Role.MEMBER.value))
+
+        file = File(
+            id=uuid4(),
+            channel_id=channel.id,
+            filename="irrelevant.pdf",
+            storage_path="irrelevant.pdf",
+            uploaded_by=user.id,
+            ingestion_status="completed",
+        )
+        session.add(file)
+
+        # Chunk with orthogonal embedding resulting in 0.0 cosine similarity
+        orthogonal_embedding = [0.0] * 384
+        orthogonal_embedding[0] = 1.0
+        session.add(
+            Chunk(
+                id=uuid4(),
+                file_id=file.id,
+                channel_id=channel.id,
+                page_number=1,
+                section="Irrelevant",
+                content="Irrelevant topic text.",
+                embedding=orthogonal_embedding,
+            )
+        )
+        session.commit()
+        channel_id = channel.id
+
+    with patch("app.bot.routes.search_channel_chunks", return_value=[]):
+        response = client.post(
+            f"/channels/{channel_id}/ask",
+            json={"question": "What is the completely unrelated topic?"},
+            headers={"Authorization": "Bearer dev-token"},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "answer": "Insufficient evidence in this channel to answer the question.",
+        "citations": [],
+        "insufficient_evidence": True,
+    }
+
+
+@pytest.mark.parametrize("role", [Role.OWNER, Role.ADMIN, Role.MEMBER, Role.READ_ONLY])
+def test_ask_endpoint_allows_all_four_channel_roles(client: TestClient, role: Role) -> None:
+    """S4-10: Confirms owner, admin, member, and read_only are all authorized to ask."""
+    user_id = uuid4()
+    with client.app.state.test_session_factory() as session:
+        user = User(id=user_id, email=f"user-{role.value}@example.com", password_hash="hash")
+        session.add(user)
+        workspace = Workspace(id=uuid4(), name="Engineering", owner_id=user_id)
+        channel = Channel(id=uuid4(), workspace_id=workspace.id, name=f"Channel-{role.value}")
+        session.add_all([workspace, channel])
+        session.add(Membership(user_id=user_id, channel_id=channel.id, role=role.value))
+        session.commit()
+        channel_id = channel.id
+
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(id=user_id)
+    response = client.post(
+        f"/channels/{channel_id}/ask",
+        json={"question": "What is our process?"},
+        headers={"Authorization": "Bearer dev-token"},
+    )
+    assert response.status_code == 200
+
+
+def test_ask_endpoint_denies_non_member(client: TestClient) -> None:
+    """S4-10: Confirms a non-member is denied access to the ask endpoint."""
+    user_id = uuid4()
+    with client.app.state.test_session_factory() as session:
+        creator_id = uuid4()
+        creator = User(id=creator_id, email="creator@example.com", password_hash="hash")
+        session.add(creator)
+        workspace = Workspace(id=uuid4(), name="Engineering", owner_id=creator_id)
+        channel = Channel(id=uuid4(), workspace_id=workspace.id, name="Secret Channel")
+        session.add_all([workspace, channel])
+        session.add(Membership(user_id=creator_id, channel_id=channel.id, role=Role.OWNER.value))
+        session.commit()
+        channel_id = channel.id
+
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(id=user_id)
+    response = client.post(
+        f"/channels/{channel_id}/ask",
+        json={"question": "Can I see secret data?"},
+        headers={"Authorization": "Bearer dev-token"},
+    )
+    assert response.status_code == 404
+
