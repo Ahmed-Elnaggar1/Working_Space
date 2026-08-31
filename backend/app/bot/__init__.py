@@ -13,6 +13,7 @@ EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 CHUNK_EMBEDDING_DIMENSION = 384
 QUESTION_EMBEDDING_DIMENSION = CHUNK_EMBEDDING_DIMENSION
 RETRIEVAL_TOP_K = 5
+INSUFFICIENT_EVIDENCE_THRESHOLD = 0.15
 
 
 def embed_question(question: str) -> list[float]:
@@ -82,14 +83,28 @@ def search_channel_chunks(
     return [chunk for _, chunk in scored_chunks[:limit]]
 
 
+def should_return_insufficient_evidence(
+    ranked_chunks: list[tuple[float, object]],
+    threshold: float = INSUFFICIENT_EVIDENCE_THRESHOLD,
+) -> bool:
+    """Return True when a channel does not contain enough relevant evidence."""
+    if not ranked_chunks:
+        return True
+
+    best_score = ranked_chunks[0][0]
+    return best_score < threshold
+
+
 __all__ = [
     "EMBEDDING_MODEL",
     "CHUNK_EMBEDDING_DIMENSION",
     "QUESTION_EMBEDDING_DIMENSION",
     "RETRIEVAL_TOP_K",
+    "INSUFFICIENT_EVIDENCE_THRESHOLD",
     "PlaceholderLLMClient",
     "embed_question",
     "generate_answer",
     "get_llm_api_key",
     "search_channel_chunks",
+    "should_return_insufficient_evidence",
 ]
