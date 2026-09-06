@@ -78,6 +78,9 @@ class Channel(Base):
     )
     files: Mapped[list["File"]] = relationship(back_populates="channel", cascade="all, delete-orphan")
     chunks: Mapped[list["Chunk"]] = relationship(back_populates="channel", cascade="all, delete-orphan")
+    messages: Mapped[list["Message"]] = relationship(
+        back_populates="channel", cascade="all, delete-orphan"
+    )
 
 
 class Membership(Base):
@@ -138,3 +141,20 @@ class RefreshToken(Base):
     token_hash: Mapped[str] = mapped_column(Text, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Message(Base):
+    __tablename__ = "messages"
+    __table_args__ = (
+        Index("ix_messages_channel_created_at", "channel_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(GUID(), primary_key=True, default=uuid4)
+    channel_id: Mapped[UUID] = mapped_column(ForeignKey("channels.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    channel: Mapped[Channel] = relationship(back_populates="messages")
+    user: Mapped[User] = relationship()
+
