@@ -105,50 +105,6 @@ class File(Base):
     __tablename__ = "files"
 
     id: Mapped[UUID] = mapped_column(GUID(), primary_key=True, default=uuid4)
-    channel_id: Mapped[UUID] = mapped_column(ForeignKey("channels.id"), nullable=False)
-    filename: Mapped[str] = mapped_column(String(255), nullable=False)
-    storage_path: Mapped[str] = mapped_column(String(500), nullable=False)
-    uploaded_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
-    ingestion_status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
-
-    channel: Mapped[Channel] = relationship(back_populates="files")
-    chunks: Mapped[list["Chunk"]] = relationship(back_populates="file", cascade="all, delete-orphan")
-
-
-class Chunk(Base):
-    __tablename__ = "chunks"
-    __table_args__ = (
-        Index("ix_chunks_channel_id", "channel_id"),
-        Index("ix_chunks_file_id", "file_id"),
-    )
-
-    id: Mapped[UUID] = mapped_column(GUID(), primary_key=True, default=uuid4)
-    file_id: Mapped[UUID] = mapped_column(ForeignKey("files.id"), nullable=False)
-    channel_id: Mapped[UUID] = mapped_column(ForeignKey("channels.id"), nullable=False)
-    page_number: Mapped[int | None] = mapped_column(nullable=True)
-    section: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    content: Mapped[str] = mapped_column(Text, nullable=False)
-    embedding: Mapped[list[float]] = mapped_column(JSON, nullable=False)
-
-    file: Mapped[File] = relationship(back_populates="chunks")
-    channel: Mapped[Channel] = relationship(back_populates="chunks")
-
-
-class RefreshToken(Base):
-    __tablename__ = "refresh_tokens"
-
-    id: Mapped[UUID] = mapped_column(GUID(), primary_key=True, default=uuid4)
-    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
-    token_hash: Mapped[str] = mapped_column(Text, nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-
-
-class File(Base):
-    __tablename__ = "files"
-
-    id: Mapped[UUID] = mapped_column(GUID(), primary_key=True, default=uuid4)
     channel_id: Mapped[UUID] = mapped_column(ForeignKey("channels.id", ondelete="CASCADE"), nullable=False)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     storage_path: Mapped[str] = mapped_column(String(1024), nullable=False)
@@ -163,6 +119,10 @@ class File(Base):
 
 class Chunk(Base):
     __tablename__ = "chunks"
+    __table_args__ = (
+        Index("ix_chunks_channel_id", "channel_id"),
+        Index("ix_chunks_file_id", "file_id"),
+    )
 
     id: Mapped[UUID] = mapped_column(GUID(), primary_key=True, default=uuid4)
     file_id: Mapped[UUID] = mapped_column(ForeignKey("files.id", ondelete="CASCADE"), nullable=False)
@@ -170,10 +130,20 @@ class Chunk(Base):
     page_number: Mapped[int | None] = mapped_column(nullable=True)
     section: Mapped[str | None] = mapped_column(String(255), nullable=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    embedding: Mapped[list[float]] = mapped_column(Vector(1536), nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(Vector, nullable=False)
 
     file: Mapped["File"] = relationship(back_populates="chunks")
+    channel: Mapped["Channel"] = relationship(back_populates="chunks")
 
+
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[UUID] = mapped_column(GUID(), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Message(Base):
@@ -190,4 +160,5 @@ class Message(Base):
 
     channel: Mapped[Channel] = relationship(back_populates="messages")
     user: Mapped[User] = relationship()
+
 

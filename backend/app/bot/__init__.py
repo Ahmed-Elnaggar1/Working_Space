@@ -54,6 +54,8 @@ def _coerce_vector(values: object) -> list[float]:
     if isinstance(values, str):
         entries = [segment.strip() for segment in values.strip("[] ").split(",") if segment.strip()]
         return [float(value) for value in entries]
+    if hasattr(values, "tolist") and callable(values.tolist):
+        return [float(value) for value in values.tolist()]
     if isinstance(values, (list, tuple)):
         return [float(value) for value in values]
     raise TypeError("Chunk embedding must be stored as a numeric list or JSON array.")
