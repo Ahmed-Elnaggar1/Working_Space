@@ -10,7 +10,10 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.auth.routes import router as auth_router
+from app.bot.routes import router as bot_router
 from app.channels.routes import router as channels_router
+from app.chat.routes import router as chat_router
+from app.files.routes import router as files_router
 from app.workspaces.routes import router as workspaces_router
 
 app = FastAPI(title="Vault API", version="0.1.0")
@@ -19,6 +22,9 @@ app = FastAPI(title="Vault API", version="0.1.0")
 app.include_router(auth_router)
 app.include_router(workspaces_router)
 app.include_router(channels_router)
+app.include_router(bot_router)
+app.include_router(chat_router)
+app.include_router(files_router)
 
 # Global Exception Handlers to match API.md contract
 @app.exception_handler(StarletteHTTPException)
@@ -31,6 +37,9 @@ async def custom_http_exception_handler(request: Request, exc: StarletteHTTPExce
         409: "CONFLICT",
         422: "VALIDATION_ERROR",
         500: "INTERNAL_SERVER_ERROR",
+        502: "BAD_GATEWAY",
+        503: "SERVICE_UNAVAILABLE",
+        504: "GATEWAY_TIMEOUT",
     }
     code = code_map.get(exc.status_code, "ERROR")
     return JSONResponse(
@@ -54,6 +63,20 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
                 "code": "VALIDATION_ERROR",
                 "message": "Validation failed",
                 "details": exc.errors(),
+                "request_id": str(uuid.uuid4()),
+            }
+        },
+    )
+
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "error": {
+                "code": "INTERNAL_SERVER_ERROR",
+                "message": "An unexpected error occurred.",
                 "request_id": str(uuid.uuid4()),
             }
         },

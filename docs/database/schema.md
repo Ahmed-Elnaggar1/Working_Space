@@ -58,9 +58,10 @@ users 1--many refresh_tokens
 - Deleting a user is restricted until ownership and membership relationships are reassigned or removed.
 - Soft deletion should be considered for users, workspaces, and files once audit/history requirements are known.
 
-## Open decisions
+## Finalized implementation decisions
 
-- Exact embedding model and vector dimension
+- Embedding model: `sentence-transformers/all-MiniLM-L6-v2`
+- Embedding dimension: `384` (matches `chunks.embedding` and the question embedding contract)
 - Alembic migrations live in `backend/migrations/`, with configuration in `backend/alembic.ini`.
 - Whether messages and files use soft deletion
 - Retention and backup policy

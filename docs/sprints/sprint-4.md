@@ -54,10 +54,10 @@
 
 ## Sprint review checklist
 
-- [ ] A member can ask a question and get an answer grounded in that channel's materials, with a citation whose page number matches the real source chunk.
-- [ ] A non-member cannot call the ask endpoint on a channel they don't belong to.
-- [ ] A question against a channel with no completed files returns `insufficient_evidence: true`, not an error or a hallucinated answer.
-- [ ] A chunk from another channel never leaks into an answer, verified by an explicit cross-channel test, not just assumed from the query filter.
-- [ ] The manual QA test set (S4-09) accuracy result is recorded and compared against the PRD's 90% target — and if it falls short, that gap is logged as a known issue, not silently ignored.
-- [ ] LLM call failures degrade gracefully with a documented error shape.
-- [ ] Next sprint backlog (chat/WebSocket) is created from the remaining gaps.
+- [x] A member can ask a question and get an answer grounded in that channel's materials, with a citation whose page number matches the real source chunk.
+- [x] A non-member cannot call the ask endpoint on a channel they don't belong to.
+- [x] A question against a channel with no completed files returns `insufficient_evidence: true`, not an error or a hallucinated answer.
+- [x] A chunk from another channel never leaks into an answer, verified by an explicit cross-channel test, not just assumed from the query filter.
+- [x] The manual QA test set (S4-09) accuracy result is recorded and compared against the PRD's 90% target — and if it falls short, that gap is logged as a known issue, not silently ignored.
+- [x] LLM call failures degrade gracefully with a documented error shape.
+- [x] Next sprint backlog (chat/WebSocket) is created from the remaining gaps.
