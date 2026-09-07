@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.repositories import RefreshTokenRepository, UserRepository
 from app.auth.schemas import UserLogin, UserRegister
@@ -20,11 +20,11 @@ from app.models import User
 
 class AuthService:
     @staticmethod
-    def register(db: Session, payload: UserRegister) -> User:
+    async def register(db: AsyncSession, payload: UserRegister) -> User:
         email = payload.email.strip().lower()
         
         # Check if user already exists
-        existing_user = UserRepository.get_by_email(db, email)
+        existing_user = await UserRepository.get_by_email(db, email)
         if existing_user:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -33,18 +33,18 @@ class AuthService:
         
         # Hash password and create user
         password_hash = hash_password(payload.password)
-        user = UserRepository.create(db, email, password_hash)
+        user = await UserRepository.create(db, email, password_hash)
         
-        db.commit()
-        db.refresh(user)
+        await db.commit()
+        await db.refresh(user)
         return user
 
     @staticmethod
-    def login(db: Session, payload: UserLogin) -> tuple[User, str, str]:
+    async def login(db: AsyncSession, payload: UserLogin) -> tuple[User, str, str]:
         email = payload.email.strip().lower()
         
         # Find user
-        user = UserRepository.get_by_email(db, email)
+        user = await UserRepository.get_by_email(db, email)
         if not user or not verify_password(payload.password, user.password_hash):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -66,13 +66,13 @@ class AuthService:
         
         # Persist refresh token hash
         token_hash = hash_token_sha256(refresh_token)
-        RefreshTokenRepository.create(db, user.id, token_hash, expires_at)
+        await RefreshTokenRepository.create(db, user.id, token_hash, expires_at)
         
-        db.commit()
+        await db.commit()
         return user, access_token, refresh_token
 
     @staticmethod
-    def refresh(db: Session, refresh_token: str) -> tuple[str, str]:
+    async def refresh(db: AsyncSession, refresh_token: str) -> tuple[str, str]:
         if not refresh_token:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -105,7 +105,7 @@ class AuthService:
 
         # Find persisted refresh token
         token_hash = hash_token_sha256(refresh_token)
-        record = RefreshTokenRepository.get_by_hash(db, token_hash)
+        record = await RefreshTokenRepository.get_by_hash(db, token_hash)
 
         if not record:
             raise HTTPException(
@@ -116,8 +116,8 @@ class AuthService:
         # Check for token reuse (token has already been revoked)
         if record.revoked_at is not None:
             # Breach detected: revoke all active tokens for this user
-            RefreshTokenRepository.revoke_all_for_user(db, record.user_id)
-            db.commit()
+            await RefreshTokenRepository.revoke_all_for_user(db, record.user_id)
+            await db.commit()
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Session expired due to token reuse",
@@ -145,7 +145,7 @@ class AuthService:
         new_refresh_token = create_refresh_token({"sub": str(user_id)})
 
         # Revoke old token
-        RefreshTokenRepository.revoke(db, record)
+        await RefreshTokenRepository.revoke(db, record)
 
         # Persist new token hash
         try:
@@ -156,13 +156,13 @@ class AuthService:
             new_expires_at = datetime.now(timezone.utc) + timedelta(days=7)
 
         new_token_hash = hash_token_sha256(new_refresh_token)
-        RefreshTokenRepository.create(db, user_id, new_token_hash, new_expires_at)
+        await RefreshTokenRepository.create(db, user_id, new_token_hash, new_expires_at)
 
-        db.commit()
+        await db.commit()
         return new_access_token, new_refresh_token
 
     @staticmethod
-    def logout(db: Session, refresh_token: str | None) -> None:
+    async def logout(db: AsyncSession, refresh_token: str | None) -> None:
         if not refresh_token:
             return
 
@@ -170,10 +170,10 @@ class AuthService:
             # We don't strictly require full validation on logout to allow users to log out even if token expired,
             # but we extract the hash to invalidate it in database if it exists.
             token_hash = hash_token_sha256(refresh_token)
-            record = RefreshTokenRepository.get_by_hash(db, token_hash)
+            record = await RefreshTokenRepository.get_by_hash(db, token_hash)
             if record and record.revoked_at is None:
-                RefreshTokenRepository.revoke(db, record)
-                db.commit()
+                await RefreshTokenRepository.revoke(db, record)
+                await db.commit()
         except Exception:
             # Make logout completely safe/no-op on error
             pass

@@ -2,10 +2,10 @@ from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import CurrentUser, get_current_user
-from app.db import get_db
+from app.core.db import get_db
 from app.models import Channel, Membership, Role
 
 # Central role-action mapping based on permissions.md
@@ -60,11 +60,11 @@ class RequireRole:
     def __init__(self, action: str):
         self.action = action
 
-    def __call__(
+    async def __call__(
         self,
         request: Request,
         current_user: CurrentUser = Depends(get_current_user),
-        db: Session = Depends(get_db),
+        db: AsyncSession = Depends(get_db),
     ) -> Membership:
         # Extract channel_id from path parameters (try 'channel_id' first, fallback to 'id')
         channel_id_str = request.path_params.get("channel_id") or request.path_params.get("id")
@@ -83,7 +83,7 @@ class RequireRole:
             )
 
         # 1. Validate that the channel exists in database
-        channel_exists = db.scalar(select(Channel).where(Channel.id == channel_id))
+        channel_exists = await db.scalar(select(Channel).where(Channel.id == channel_id))
         if not channel_exists:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -91,7 +91,7 @@ class RequireRole:
             )
 
         # 2. Check user's channel membership
-        membership = db.scalar(
+        membership = await db.scalar(
             select(Membership).where(
                 Membership.user_id == current_user.id,
                 Membership.channel_id == channel_id,

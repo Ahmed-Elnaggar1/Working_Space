@@ -1,8 +1,9 @@
-import os
 from pathlib import Path
 
 import boto3
 from botocore.exceptions import ClientError
+
+from app.core.config import settings
 
 
 class StorageError(Exception):
@@ -11,11 +12,11 @@ class StorageError(Exception):
 
 class S3Storage:
     def __init__(self):
-        self.endpoint_url = os.getenv("AWS_ENDPOINT_URL")
-        self.aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
-        self.aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
-        self.bucket_name = os.getenv("S3_BUCKET_NAME", "vault-bucket")
-        self.region = os.getenv("AWS_REGION", "us-east-1")
+        self.endpoint_url = settings.AWS_ENDPOINT_URL or settings.S3_ENDPOINT
+        self.aws_access_key = settings.AWS_ACCESS_KEY_ID or settings.S3_ACCESS_KEY
+        self.aws_secret_key = settings.AWS_SECRET_ACCESS_KEY or settings.S3_SECRET_KEY
+        self.bucket_name = settings.S3_BUCKET_NAME
+        self.region = settings.AWS_REGION
         self._s3_client = None
         self.local_root = Path(__file__).resolve().parent.parent / ".local_storage"
 

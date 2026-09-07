@@ -1,9 +1,9 @@
-import os
-
 from fastapi import Request, Response
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.schemas import TokenResponse, UserLogin, UserRegister, UserResponse
 from app.auth.services import AuthService
+from app.core.config import settings
 
 
 class AuthController:
@@ -11,7 +11,7 @@ class AuthController:
 
     @classmethod
     def _set_refresh_cookie(cls, response: Response, refresh_token: str) -> None:
-        is_prod = os.getenv("ENV") == "production"
+        is_prod = settings.ENV == "production"
         # 7 days max age
         max_age = 7 * 24 * 60 * 60
         response.set_cookie(
@@ -25,7 +25,7 @@ class AuthController:
 
     @classmethod
     def _clear_refresh_cookie(cls, response: Response) -> None:
-        is_prod = os.getenv("ENV") == "production"
+        is_prod = settings.ENV == "production"
         response.delete_cookie(
             key=cls.COOKIE_NAME,
             httponly=True,
@@ -34,26 +34,26 @@ class AuthController:
         )
 
     @classmethod
-    def register(cls, db, payload: UserRegister) -> dict:
-        user = AuthService.register(db, payload)
+    async def register(cls, db: AsyncSession, payload: UserRegister) -> dict:
+        user = await AuthService.register(db, payload)
         # Returns response matching API contract: {"user": {"id": "uuid", "email": "email"}}
         return {"user": UserResponse.model_validate(user)}
 
     @classmethod
-    def login(cls, db, payload: UserLogin, response: Response) -> TokenResponse:
-        user, access_token, refresh_token = AuthService.login(db, payload)
+    async def login(cls, db: AsyncSession, payload: UserLogin, response: Response) -> TokenResponse:
+        user, access_token, refresh_token = await AuthService.login(db, payload)
         cls._set_refresh_cookie(response, refresh_token)
         return TokenResponse(access_token=access_token)
 
     @classmethod
-    def refresh(cls, db, request: Request, response: Response) -> TokenResponse:
+    async def refresh(cls, db: AsyncSession, request: Request, response: Response) -> TokenResponse:
         refresh_token = request.cookies.get(cls.COOKIE_NAME)
-        new_access_token, new_refresh_token = AuthService.refresh(db, refresh_token)
+        new_access_token, new_refresh_token = await AuthService.refresh(db, refresh_token)
         cls._set_refresh_cookie(response, new_refresh_token)
         return TokenResponse(access_token=new_access_token)
 
     @classmethod
-    def logout(cls, db, request: Request, response: Response) -> None:
+    async def logout(cls, db: AsyncSession, request: Request, response: Response) -> None:
         refresh_token = request.cookies.get(cls.COOKIE_NAME)
-        AuthService.logout(db, refresh_token)
+        await AuthService.logout(db, refresh_token)
         cls._clear_refresh_cookie(response)

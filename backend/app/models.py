@@ -8,7 +8,7 @@ from sqlalchemy.types import CHAR, TypeDecorator
 from pgvector.sqlalchemy import Vector
 
 
-from app.db import Base
+from app.core import Base
 
 
 class GUID(TypeDecorator[UUID]):

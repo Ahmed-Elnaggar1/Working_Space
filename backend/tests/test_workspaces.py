@@ -8,8 +8,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.auth.dependencies import CurrentUser, DEV_USER_ID, get_current_user
-from app.db import Base, get_db
+from app.core import Base, get_db
 from app.main import app
+from tests.async_session_adapter import AsyncSessionAdapter
 
 
 
@@ -25,7 +26,7 @@ def client() -> Generator[TestClient, None, None]:
 
     def override_get_db() -> Generator[Session, None, None]:
         with session_factory() as session:
-            yield session
+            yield AsyncSessionAdapter(session)
 
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_current_user] = lambda: CurrentUser(id=DEV_USER_ID)

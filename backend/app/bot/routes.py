@@ -1,12 +1,12 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot import INSUFFICIENT_EVIDENCE_THRESHOLD, generate_answer, search_channel_chunks
 from app.bot.llm import LLMError, LLMServiceError, LLMTimeoutError
 from app.bot.schemas import AskRequest, AskResponse
-from app.db import get_db
+from app.core.db import get_db
 from app.permissions import require_role
 
 router = APIRouter(tags=["bot"])
@@ -17,12 +17,12 @@ router = APIRouter(tags=["bot"])
     response_model=AskResponse,
     dependencies=[Depends(require_role("ask_bot"))],
 )
-def ask_channel(
+async def ask_channel(
     channel_id: UUID,
     payload: AskRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ) -> dict:
-    chunks = search_channel_chunks(
+    chunks = await search_channel_chunks(
         db,
         channel_id,
         payload.question,

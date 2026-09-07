@@ -1,4 +1,5 @@
 from collections.abc import Generator
+import asyncio
 from uuid import UUID, uuid4
 
 import pytest
@@ -8,7 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.auth.dependencies import CurrentUser, DEV_USER_ID, get_current_user
-from app.db import Base, get_db
+from app.core import Base, get_db
 from app.main import app
 from app.models import Membership, Role, Channel, File, Chunk, User, Workspace
 from app.ingestion.parser import parse_file, ParsingError
@@ -16,6 +17,7 @@ from app.ingestion.chunker import chunk_parsed_content
 from app.ingestion.embeddings import generate_embedding
 from app.ingestion.pipeline import run_ingestion_pipeline
 from app.files.storage import storage
+from tests.async_session_adapter import AsyncSessionAdapter
 
 # Minimal valid PDF bytes for pypdf tests
 MINIMAL_PDF_BYTES = (
@@ -81,14 +83,16 @@ def mock_storage(monkeypatch):
 @pytest.fixture
 def client(db_session: Session) -> Generator[TestClient, None, None]:
     def override_get_db() -> Generator[Session, None, None]:
-        yield db_session
+        yield AsyncSessionAdapter(db_session)
 
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_current_user] = lambda: CurrentUser(id=DEV_USER_ID)
     app.state.test_session_factory = lambda: db_session
+    app.state.test_async_session_factory = lambda: AsyncSessionAdapter(db_session)
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+    delattr(app.state, "test_async_session_factory")
 
 
 def setup_workspace_and_channel(db: Session, owner_id: UUID) -> tuple[Workspace, Channel]:
@@ -200,7 +204,7 @@ def test_pipeline_success_path(db_session: Session, mock_storage):
     db_session.commit()
     
     # Run pipeline
-    run_ingestion_pipeline(file_id, db=db_session)
+    asyncio.run(run_ingestion_pipeline(file_id, db=AsyncSessionAdapter(db_session)))
     
     # Check updated status
     db_session.refresh(file_record)
@@ -236,7 +240,7 @@ def test_pipeline_failure_path_corrupt_file(db_session: Session, mock_storage):
     db_session.commit()
     
     # Run pipeline
-    run_ingestion_pipeline(file_id, db=db_session)
+    asyncio.run(run_ingestion_pipeline(file_id, db=AsyncSessionAdapter(db_session)))
     
     # Check updated status
     db_session.refresh(file_record)
@@ -271,7 +275,7 @@ def test_api_upload_flow_and_transitions(client: TestClient, db_session: Session
     assert file_record.storage_path in mock_storage
     
     # Process background tasks (we call pipeline directly in test since SQLite is in-memory)
-    run_ingestion_pipeline(file_id, db=db_session)
+    asyncio.run(run_ingestion_pipeline(file_id, db=AsyncSessionAdapter(db_session)))
     
     db_session.refresh(file_record)
     assert file_record.ingestion_status == "completed"
@@ -352,7 +356,7 @@ def test_api_retry_ingestion(client: TestClient, db_session: Session, mock_stora
     mock_storage[storage_path] = MINIMAL_PDF_BYTES
     
     # Trigger background tasks execution
-    run_ingestion_pipeline(file_id, db=db_session)
+    asyncio.run(run_ingestion_pipeline(file_id, db=AsyncSessionAdapter(db_session)))
     
     # Check that it succeeded
     db_session.refresh(file_record)

@@ -8,13 +8,15 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.auth.dependencies import CurrentUser, DEV_USER_ID, get_current_user
-from app.db import Base, get_db
+from app.core import Base, get_db
+from app.files.storage import storage
 from app.main import app
 from app.models import Membership, Role, User
+from tests.async_session_adapter import AsyncSessionAdapter
 
 
 @pytest.fixture
-def client() -> Generator[TestClient, None, None]:
+def client(monkeypatch: pytest.MonkeyPatch) -> Generator[TestClient, None, None]:
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
@@ -22,17 +24,22 @@ def client() -> Generator[TestClient, None, None]:
     )
     Base.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine)
+    monkeypatch.setattr(storage, "endpoint_url", None)
+    monkeypatch.setattr(storage, "aws_access_key", None)
+    monkeypatch.setattr(storage, "aws_secret_key", None)
 
     def override_get_db() -> Generator[Session, None, None]:
         with session_factory() as session:
-            yield session
+            yield AsyncSessionAdapter(session)
 
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_current_user] = lambda: CurrentUser(id=DEV_USER_ID)
     app.state.test_session_factory = session_factory
+    app.state.test_async_session_factory = lambda: AsyncSessionAdapter(session_factory())
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+    delattr(app.state, "test_async_session_factory")
 
 
 def create_workspace_and_channel(client: TestClient, user_id: UUID | None = None) -> tuple[str, str]:

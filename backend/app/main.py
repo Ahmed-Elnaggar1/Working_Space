@@ -1,8 +1,3 @@
-# ruff: noqa: E402
-from dotenv import load_dotenv
-load_dotenv()
-
-
 import uuid
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError

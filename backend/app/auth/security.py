@@ -1,17 +1,17 @@
-import os
 import hashlib
 from datetime import datetime, timedelta, timezone
 import bcrypt
 from jose import jwt, JWTError
+from app.core.config import settings
 
-# Load environment configuration
-JWT_ACCESS_SECRET = os.getenv("JWT_ACCESS_SECRET", "dev-access-secret-key-change-in-production-1234567890")
-JWT_REFRESH_SECRET = os.getenv("JWT_REFRESH_SECRET", "dev-refresh-secret-key-change-in-production-1234567890")
+_DEFAULT_ACCESS_SECRET = "dev-access-secret-key-change-in-production-1234567890"
+_DEFAULT_REFRESH_SECRET = "dev-refresh-secret-key-change-in-production-1234567890"
+JWT_ACCESS_SECRET = settings.JWT_ACCESS_SECRET or settings.JWT_SECRET or _DEFAULT_ACCESS_SECRET
+JWT_REFRESH_SECRET = settings.JWT_REFRESH_SECRET or settings.JWT_SECRET or _DEFAULT_REFRESH_SECRET
 JWT_ALGORITHM = "HS256"
 
-# Default expirations
-ACCESS_EXPIRE_STR = os.getenv("JWT_ACCESS_EXPIRES_IN", "15m")
-REFRESH_EXPIRE_STR = os.getenv("JWT_REFRESH_EXPIRES_IN", "7d")
+ACCESS_EXPIRE_STR = settings.JWT_ACCESS_EXPIRES_IN
+REFRESH_EXPIRE_STR = settings.JWT_REFRESH_EXPIRES_IN
 
 
 def parse_duration(duration_str: str) -> timedelta:

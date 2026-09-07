@@ -1,6 +1,6 @@
-import os
-
 import httpx
+
+from app.core.config import get_settings
 
 
 class LLMError(Exception):
@@ -44,9 +44,10 @@ class ClaudeClient:
         timeout: float = 30.0,
     ):
         self.api_key = api_key or get_llm_api_key()
-        self.model_name = model or os.getenv("CLAUDE_MODEL", "claude-3-5-sonnet-20241022")
-        self.base_url = (base_url or os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com")).rstrip("/")
-        self.timeout = float(os.getenv("LLM_TIMEOUT_SECONDS", str(timeout)))
+        settings = get_settings()
+        self.model_name = model or settings.CLAUDE_MODEL
+        self.base_url = (base_url or settings.ANTHROPIC_BASE_URL).rstrip("/")
+        self.timeout = settings.LLM_TIMEOUT_SECONDS or timeout
 
     def generate_response(self, question: str, chunks: list[dict]) -> str:
         if not chunks:
@@ -107,9 +108,10 @@ class OllamaClient:
     """Local, free LLM provider that exposes an OpenAI-compatible endpoint."""
 
     def __init__(self, model: str | None = None, base_url: str | None = None, timeout: float = 120.0):
-        self.model_name = model or os.getenv("OLLAMA_MODEL", "qwen2.5:7b-instruct")
-        self.base_url = (base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")).rstrip("/")
-        self.timeout = float(os.getenv("LLM_TIMEOUT_SECONDS", str(timeout)))
+        settings = get_settings()
+        self.model_name = model or settings.OLLAMA_MODEL
+        self.base_url = (base_url or settings.OLLAMA_BASE_URL).rstrip("/")
+        self.timeout = settings.LLM_TIMEOUT_SECONDS or timeout
 
     def generate_response(self, question: str, chunks: list[dict]) -> str:
         if not chunks:
@@ -151,7 +153,7 @@ class OllamaClient:
 
 
 def build_llm_client():
-    provider = os.getenv("LLM_PROVIDER", "placeholder").lower()
+    provider = get_settings().LLM_PROVIDER.lower()
     if provider in {"claude", "anthropic"}:
         return ClaudeClient()
     if provider in {"ollama", "local", "free"}:
@@ -161,7 +163,8 @@ def build_llm_client():
 
 def get_llm_api_key() -> str:
     """Read the configured API key from environment, defaulting to a placeholder."""
-    return os.getenv("ANTHROPIC_API_KEY") or os.getenv("LLM_API_KEY", "placeholder-local-key")
+    settings = get_settings()
+    return settings.ANTHROPIC_API_KEY or settings.LLM_API_KEY
 
 
 def generate_answer(question: str, chunks: list[dict], llm_client=None) -> dict:

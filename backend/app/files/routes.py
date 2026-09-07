@@ -12,10 +12,10 @@ from fastapi import (
 )
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import CurrentUser, get_current_user
-from app.db import get_db
+from app.core.db import get_db
 from app.files.schemas import FileResponse
 from app.files.storage import storage
 from app.ingestion.pipeline import run_ingestion_pipeline
@@ -35,7 +35,7 @@ async def upload_file(
     file: UploadFile,
     background_tasks: BackgroundTasks,
     current_user: CurrentUser = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     _membership: Membership = Depends(require_role("upload_files")),
 ):
     file_id = uuid4()
@@ -60,8 +60,8 @@ async def upload_file(
         ingestion_error=None,
     )
     db.add(file_record)
-    db.commit()
-    db.refresh(file_record)
+    await db.commit()
+    await db.refresh(file_record)
 
     background_tasks.add_task(run_ingestion_pipeline, file_record.id)
 
@@ -82,12 +82,12 @@ async def upload_file(
     "/channels/{channel_id}/files",
     response_model=list[FileResponse],
 )
-def list_files(
+async def list_files(
     channel_id: UUID,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     _membership: Membership = Depends(require_role("view_files")),
 ):
-    files = db.scalars(select(File).where(File.channel_id == channel_id)).all()
+    files = (await db.scalars(select(File).where(File.channel_id == channel_id))).all()
     return [
         {
             "id": record.id,
@@ -107,13 +107,13 @@ def list_files(
 @router.get(
     "/channels/{channel_id}/files/{file_id}/download",
 )
-def download_file(
+async def download_file(
     channel_id: UUID,
     file_id: UUID,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     _membership: Membership = Depends(require_role("view_files")),
 ):
-    file_record = db.scalar(select(File).where(File.id == file_id, File.channel_id == channel_id))
+    file_record = await db.scalar(select(File).where(File.id == file_id, File.channel_id == channel_id))
     if not file_record:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
 
@@ -136,14 +136,14 @@ def download_file(
     "/channels/{channel_id}/files/{file_id}/retry-ingestion",
     response_model=FileResponse,
 )
-def retry_ingestion(
+async def retry_ingestion(
     channel_id: UUID,
     file_id: UUID,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     _membership: Membership = Depends(require_role("upload_files")),
 ):
-    file_record = db.scalar(select(File).where(File.id == file_id, File.channel_id == channel_id))
+    file_record = await db.scalar(select(File).where(File.id == file_id, File.channel_id == channel_id))
     if not file_record:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
 
@@ -155,8 +155,8 @@ def retry_ingestion(
 
     file_record.ingestion_status = "pending"
     file_record.ingestion_error = None
-    db.commit()
-    db.refresh(file_record)
+    await db.commit()
+    await db.refresh(file_record)
 
     background_tasks.add_task(run_ingestion_pipeline, file_record.id)
 
@@ -177,18 +177,18 @@ def retry_ingestion(
     "/channels/{channel_id}/files/{file_id}",
     status_code=status.HTTP_204_NO_CONTENT,
 )
-def delete_file(
+async def delete_file(
     channel_id: UUID,
     file_id: UUID,
     current_user: CurrentUser = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     _membership: Membership = Depends(require_role("delete_own_file")),
 ):
-    file_record = db.scalar(select(File).where(File.id == file_id, File.channel_id == channel_id))
+    file_record = await db.scalar(select(File).where(File.id == file_id, File.channel_id == channel_id))
     if file_record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
 
-    membership = db.scalar(
+    membership = await db.scalar(
         select(Membership).where(
             Membership.user_id == current_user.id,
             Membership.channel_id == channel_id,
@@ -210,6 +210,6 @@ def delete_file(
     except Exception:
         pass
 
-    db.delete(file_record)
-    db.commit()
+    await db.delete(file_record)
+    await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

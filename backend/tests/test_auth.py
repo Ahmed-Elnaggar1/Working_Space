@@ -8,9 +8,10 @@ from sqlalchemy.pool import StaticPool
 
 from app.auth.security import verify_password
 
-from app.db import Base, get_db
+from app.core import Base, get_db
 from app.main import app
 from app.models import RefreshToken, User
+from tests.async_session_adapter import AsyncSessionAdapter
 
 
 @pytest.fixture
@@ -29,7 +30,7 @@ def db_session() -> Generator[Session, None, None]:
 @pytest.fixture
 def client(db_session: Session) -> Generator[TestClient, None, None]:
     def override_get_db() -> Generator[Session, None, None]:
-        yield db_session
+        yield AsyncSessionAdapter(db_session)
 
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as test_client:

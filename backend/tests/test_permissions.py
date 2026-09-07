@@ -10,9 +10,10 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.auth.dependencies import CurrentUser, get_current_user
-from app.db import Base, get_db
+from app.core import Base, get_db
 from app.main import app
 from app.models import Channel, Membership, Role, User, Workspace
+from tests.async_session_adapter import AsyncSessionAdapter
 from app.permissions import require_role
 
 permissions_dummy_router = APIRouter(prefix="/test-permissions-auth")
@@ -73,7 +74,7 @@ def db_session() -> Generator[Session, None, None]:
 @pytest.fixture
 def client(db_session: Session, setup_app_router) -> Generator[TestClient, None, None]:
     def override_get_db() -> Generator[Session, None, None]:
-        yield db_session
+        yield AsyncSessionAdapter(db_session)
 
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as test_client:

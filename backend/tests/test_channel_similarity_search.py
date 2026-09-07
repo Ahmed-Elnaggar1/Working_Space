@@ -1,3 +1,4 @@
+import asyncio
 from uuid import uuid4
 
 from sqlalchemy import create_engine
@@ -5,8 +6,9 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.bot import CHUNK_EMBEDDING_DIMENSION, embed_question, search_channel_chunks
-from app.db import Base
+from app.core import Base
 from app.models import Channel, Chunk, File, Membership, Role, User, Workspace
+from tests.async_session_adapter import AsyncSessionAdapter
 
 
 def test_search_channel_chunks_filters_to_channel_and_ranks_by_similarity() -> None:
@@ -56,12 +58,12 @@ def test_search_channel_chunks_filters_to_channel_and_ranks_by_similarity() -> N
         session.add_all([same_channel_chunk, other_channel_chunk])
         session.commit()
 
-        results = search_channel_chunks(
-            db=session,
+        results = asyncio.run(search_channel_chunks(
+            db=AsyncSessionAdapter(session),
             channel_id=channel_a.id,
             question=question,
             limit=5,
-        )
+        ))
 
         assert [chunk.id for chunk in results] == [same_channel_chunk.id]
         assert all(chunk.channel_id == channel_a.id for chunk in results)
@@ -113,11 +115,11 @@ def test_search_channel_chunks_excludes_non_completed_files() -> None:
         session.add_all([pending_chunk, failed_chunk])
         session.commit()
 
-        results = search_channel_chunks(
-            db=session,
+        results = asyncio.run(search_channel_chunks(
+            db=AsyncSessionAdapter(session),
             channel_id=channel.id,
             question=question,
             limit=5,
-        )
+        ))
 
         assert results == []

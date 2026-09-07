@@ -3,7 +3,7 @@ import math
 from uuid import UUID
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.llm import (
     ClaudeClient,
@@ -73,8 +73,8 @@ def _cosine_similarity(left: list[float], right: list[float]) -> float:
     return dot / (left_norm * right_norm)
 
 
-def search_channel_chunks(
-    db: Session,
+async def search_channel_chunks(
+    db: AsyncSession,
     channel_id: UUID,
     question: str,
     limit: int = RETRIEVAL_TOP_K,
@@ -87,7 +87,7 @@ def search_channel_chunks(
         .join(File, Chunk.file_id == File.id)
         .where(Chunk.channel_id == channel_id, File.ingestion_status == "completed")
     )
-    chunks = db.scalars(statement).all()
+    chunks = (await db.scalars(statement)).all()
 
     scored_chunks = []
     for chunk in chunks:
