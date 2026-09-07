@@ -3,7 +3,9 @@
 __pycache__/
 *.pyc
 .venv/
+.local_storage/
 node_modules/
 .next/
 *.log
+.venv
 
