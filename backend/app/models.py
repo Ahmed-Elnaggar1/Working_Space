@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from enum import StrEnum
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, JSON, DateTime, ForeignKey, Index, String, Text, UniqueConstraint
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import CHAR, TypeDecorator
 from pgvector.sqlalchemy import Vector

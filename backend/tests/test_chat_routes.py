@@ -4,12 +4,14 @@ from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.auth.dependencies import CurrentUser, DEV_USER_ID, get_current_user
+from app.auth.security import create_access_token
 from app.core import Base, get_db
 from app.main import app
 from app.models import Channel, Membership, Message, Role, User
@@ -280,3 +282,83 @@ def test_s5_03_get_messages_pagination_and_ordering(client: TestClient) -> None:
     page3 = res.json()
     assert len(page3) == 1
     assert [m["content"] for m in page3] == ["Message 4"]
+
+
+def test_s5_04_websocket_authentication_and_broadcast(client: TestClient) -> None:
+    channel_id = create_test_channel(client)
+    user_id = uuid4()
+    with app.state.test_session_factory() as session:
+        session.add(User(id=user_id, email="ws-member@example.com", password_hash="hash"))
+        session.add(Membership(user_id=user_id, channel_id=UUID(channel_id), role=Role.MEMBER.value))
+        session.commit()
+
+    owner_token = create_access_token(DEV_USER_ID)
+    member_token = create_access_token(user_id)
+    with client.websocket_connect(f"/ws/channels/{channel_id}?token={owner_token}") as owner_ws:
+        with client.websocket_connect(f"/ws/channels/{channel_id}?token={member_token}") as member_ws:
+            owner_ws.send_json({"content": "Live message"})
+            received = member_ws.receive_json()
+            assert received["content"] == "Live message"
+
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(id=DEV_USER_ID)
+    history = client.get(f"/channels/{channel_id}/messages")
+    assert [message["content"] for message in history.json()] == ["Live message"]
+
+
+def test_s5_04_websocket_rejects_invalid_token_and_non_member(client: TestClient) -> None:
+    channel_id = create_test_channel(client)
+    non_member_id = uuid4()
+    with app.state.test_session_factory() as session:
+        session.add(User(id=non_member_id, email="ws-outsider@example.com", password_hash="hash"))
+        session.commit()
+
+    for token in ["invalid-token", create_access_token(non_member_id)]:
+        with pytest.raises(WebSocketDisconnect) as error:
+            with client.websocket_connect(f"/ws/channels/{channel_id}?token={token}"):
+                pass
+        assert error.value.code == 1008
+
+
+def test_s5_06_websocket_rechecks_role_and_membership(client: TestClient) -> None:
+    channel_id = create_test_channel(client)
+    user_id = uuid4()
+    with app.state.test_session_factory() as session:
+        session.add(User(id=user_id, email="ws-role@example.com", password_hash="hash"))
+        session.add(Membership(user_id=user_id, channel_id=UUID(channel_id), role=Role.MEMBER.value))
+        session.commit()
+
+    token = create_access_token(user_id)
+    with client.websocket_connect(f"/ws/channels/{channel_id}?token={token}") as websocket:
+        with app.state.test_session_factory() as session:
+            membership = session.query(Membership).filter_by(
+                user_id=user_id,
+                channel_id=UUID(channel_id),
+            ).one()
+            membership.role = Role.READ_ONLY.value
+            session.commit()
+
+        websocket.send_json({"content": "denied"})
+        assert websocket.receive_json() == {"error": "Permission denied"}
+
+        with app.state.test_session_factory() as session:
+            membership = session.query(Membership).filter_by(
+                user_id=user_id,
+                channel_id=UUID(channel_id),
+            ).one()
+            session.delete(membership)
+            session.commit()
+
+        websocket.send_json({"content": "removed"})
+        assert websocket.receive_json() == {"error": "Channel membership is required"}
+        with pytest.raises(WebSocketDisconnect) as error:
+            websocket.receive_json()
+        assert error.value.code == 1008
+
+
+def test_s5_09_websocket_supports_multiple_connections(client: TestClient) -> None:
+    channel_id = create_test_channel(client)
+    token = create_access_token(DEV_USER_ID)
+    with client.websocket_connect(f"/ws/channels/{channel_id}?token={token}") as first:
+        with client.websocket_connect(f"/ws/channels/{channel_id}?token={token}") as second:
+            first.send_json({"content": "two tabs"})
+            assert second.receive_json()["content"] == "two tabs"

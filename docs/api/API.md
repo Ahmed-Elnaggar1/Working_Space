@@ -130,7 +130,9 @@ Retries the ingestion process for a failed file. Requires upload files permissio
 
 ### `GET /channels/{channel_id}/messages`
 
-Returns paginated messages ordered by `created_at`.
+Returns paginated messages ordered by `created_at` ascending. Pagination uses
+`limit` (1-100, default 50) and `offset` (default 0) query parameters. Message
+content is required and limited to 4000 characters.
 
 ### `POST /channels/{channel_id}/messages`
 
@@ -140,7 +142,15 @@ Requires send-message permission.
 
 ### `WS /ws/channels/{channel_id}`
 
-Requires authentication and channel membership during connection establishment. Every received message is validated against the sender's role.
+Requires authentication and channel membership during connection establishment.
+Clients authenticate with `?token=<access_token>` (an `Authorization: Bearer`
+header is also accepted). Each received JSON message has the shape
+`{"content":"Message text"}`. Every message is validated against the sender's
+current membership and role; a role change takes effect on the next message,
+and membership removal closes the connection with WebSocket close code 1008.
+Persisted messages are broadcast to other clients in the same channel only.
+The connection manager is in-memory and therefore intended for the current
+single-backend deployment; multi-instance delivery requires shared messaging.
 
 ## Bot
 

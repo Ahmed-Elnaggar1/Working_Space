@@ -35,6 +35,10 @@ def get_current_user(request: Request) -> CurrentUser:
         )
 
     token = parts[1]
+    return authenticate_access_token(token)
+
+
+def authenticate_access_token(token: str) -> CurrentUser:
     try:
         payload = jwt.decode(token, JWT_ACCESS_SECRET, algorithms=[JWT_ALGORITHM])
         if payload.get("type") != "access":
