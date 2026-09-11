@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from enum import StrEnum
 from uuid import UUID, uuid4
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Index, String, Text, UniqueConstraint
+from sqlalchemy import CheckConstraint, JSON, DateTime, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import CHAR, TypeDecorator
 from pgvector.sqlalchemy import Vector
@@ -89,6 +89,10 @@ class Membership(Base):
     __tablename__ = "memberships"
     __table_args__ = (
         UniqueConstraint("user_id", "channel_id", name="uq_memberships_user_channel"),
+        CheckConstraint(
+            "role IN ('owner', 'admin', 'member', 'read_only')",
+            name="ck_memberships_role_valid",
+        ),
         Index("ix_memberships_user_channel", "user_id", "channel_id"),
         Index("ix_memberships_channel_role", "channel_id", "role"),
     )

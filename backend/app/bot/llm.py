@@ -1,6 +1,31 @@
 import httpx
+from typing import Protocol
 
 from app.core.config import get_settings
+
+
+INSUFFICIENT_EVIDENCE_MESSAGE = "Insufficient evidence in this channel to answer the question."
+
+
+class LLMClient(Protocol):
+    model_name: str
+
+    def generate_response(self, question: str, chunks: list[dict]) -> str:
+        ...
+
+
+def build_context(chunks: list[dict]) -> str:
+    return "\n\n".join(
+        f"Source: {chunk['file_name']} (page {chunk['page_number']}):\n{chunk['content']}"
+        for chunk in chunks
+    )
+
+
+def require_response(text: str, provider: str) -> str:
+    answer = text.strip()
+    if not answer:
+        raise LLMServiceError(f"{provider} returned an empty response.")
+    return answer
 
 
 class LLMError(Exception):
@@ -22,12 +47,9 @@ class PlaceholderLLMClient:
 
     def generate_response(self, question: str, chunks: list[dict]) -> str:
         if not chunks:
-            return "Insufficient evidence in this channel to answer the question."
+            return INSUFFICIENT_EVIDENCE_MESSAGE
 
-        context = "\n\n".join(
-            f"Source: {chunk['file_name']} (page {chunk['page_number']}):\n{chunk['content']}"
-            for chunk in chunks
-        )
+        context = build_context(chunks)
         return (
             f"Answer based on the provided channel materials.\n\nQuestion: {question}\n\nContext:\n{context}"
         )
@@ -51,12 +73,9 @@ class ClaudeClient:
 
     def generate_response(self, question: str, chunks: list[dict]) -> str:
         if not chunks:
-            return "Insufficient evidence in this channel to answer the question."
+            return INSUFFICIENT_EVIDENCE_MESSAGE
 
-        context = "\n\n".join(
-            f"Source: {chunk['file_name']} (page {chunk['page_number']}):\n{chunk['content']}"
-            for chunk in chunks
-        )
+        context = build_context(chunks)
         prompt = (
             "You are a helpful assistant answering questions strictly based on the provided channel materials.\n"
             "Answer the question using only the facts in the context. Cite the file name and page number for facts.\n"
@@ -91,7 +110,7 @@ class ClaudeClient:
                     for block in content_blocks
                     if isinstance(block, dict) and block.get("type") == "text"
                 ]
-                return "\n".join(text_blocks).strip()
+                return require_response("\n".join(text_blocks), "Claude")
         except httpx.TimeoutException as exc:
             raise LLMTimeoutError("Claude API request timed out.") from exc
         except httpx.HTTPStatusError as exc:
@@ -115,12 +134,9 @@ class OllamaClient:
 
     def generate_response(self, question: str, chunks: list[dict]) -> str:
         if not chunks:
-            return "Insufficient evidence in this channel to answer the question."
+            return INSUFFICIENT_EVIDENCE_MESSAGE
 
-        context = "\n\n".join(
-            f"Source: {chunk['file_name']} (page {chunk['page_number']}):\n{chunk['content']}"
-            for chunk in chunks
-        )
+        context = build_context(chunks)
         prompt = (
             "Use only the provided channel materials. Answer the question based on them and "
             "cite the page numbers from the source chunks.\n\n"
@@ -139,7 +155,13 @@ class OllamaClient:
                 )
                 response.raise_for_status()
                 payload = response.json()
-                return payload["message"]["content"].strip()
+                try:
+                    content = payload["message"]["content"]
+                except (KeyError, TypeError) as exc:
+                    raise LLMServiceError("Ollama returned an invalid response payload.") from exc
+                if not isinstance(content, str):
+                    raise LLMServiceError("Ollama returned non-text response content.")
+                return require_response(content, "Ollama")
         except httpx.TimeoutException as exc:
             raise LLMTimeoutError("Ollama request timed out.") from exc
         except httpx.HTTPStatusError as exc:
@@ -167,13 +189,17 @@ def get_llm_api_key() -> str:
     return settings.ANTHROPIC_API_KEY or settings.LLM_API_KEY
 
 
-def generate_answer(question: str, chunks: list[dict], llm_client=None) -> dict:
+def generate_answer(
+    question: str,
+    chunks: list[dict],
+    llm_client: LLMClient | None = None,
+) -> dict:
     if llm_client is None:
         llm_client = build_llm_client()
 
     if not chunks:
         return {
-            "answer": "Insufficient evidence in this channel to answer the question.",
+            "answer": INSUFFICIENT_EVIDENCE_MESSAGE,
             "citations": [],
             "insufficient_evidence": True,
         }

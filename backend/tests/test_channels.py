@@ -60,7 +60,11 @@ def test_create_channel_creates_owner_membership(client: TestClient) -> None:
     assert body["workspace_id"] == workspace_id
 
     with app.state.test_session_factory() as session:
-        membership = session.query(Membership).one()
+        membership = (
+            session.query(Membership)
+            .filter_by(channel_id=UUID(body["id"]))
+            .one()
+        )
         assert membership.user_id == DEV_USER_ID
         assert membership.channel_id == UUID(body["id"])
         assert membership.role == Role.OWNER.value
@@ -137,6 +141,26 @@ def test_add_channel_member_success(client: TestClient) -> None:
     assert body["role"] == "member"
 
 
+def test_duplicate_channel_member_returns_conflict(client: TestClient) -> None:
+    workspace_id = create_workspace(client)
+    created = client.post(f"/workspaces/{workspace_id}/channels", json={"name": "Backend"})
+    channel_id = created.json()["id"]
+    member_id = uuid4()
+
+    with app.state.test_session_factory() as session:
+        from app.models import User
+
+        session.add(User(id=member_id, email="duplicate@example.com", password_hash="dummy"))
+        session.commit()
+
+    payload = {"user_id": str(member_id), "role": "member"}
+    first = client.post(f"/channels/{channel_id}/members", json=payload)
+    second = client.post(f"/channels/{channel_id}/members", json=payload)
+
+    assert first.status_code == 201
+    assert second.status_code == 409
+
+
 def test_add_channel_member_denied_for_member(client: TestClient) -> None:
     workspace_id = create_workspace(client)
     created = client.post(f"/workspaces/{workspace_id}/channels", json={"name": "Backend"})
@@ -187,6 +211,21 @@ def test_update_channel_member_role_success(client: TestClient) -> None:
     )
     assert response.status_code == 200
     assert response.json()["role"] == "read_only"
+
+
+def test_last_owner_cannot_be_demoted_or_removed(client: TestClient) -> None:
+    workspace_id = create_workspace(client)
+    created = client.post(f"/workspaces/{workspace_id}/channels", json={"name": "Backend"})
+    channel_id = created.json()["id"]
+
+    demote_response = client.patch(
+        f"/channels/{channel_id}/members/{DEV_USER_ID}",
+        json={"role": "member"},
+    )
+    remove_response = client.delete(f"/channels/{channel_id}/members/{DEV_USER_ID}")
+
+    assert demote_response.status_code == 409
+    assert remove_response.status_code == 409
 
 
 def test_delete_channel_member_success_denies_subsequent_access(client: TestClient) -> None:

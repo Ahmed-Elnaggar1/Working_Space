@@ -6,8 +6,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import CurrentUser, get_current_user
+from app.channels import service
 from app.core.db import get_db
-from app.models import Channel, Membership, Role, User, Workspace
+from app.models import Channel, Membership, Role, Workspace
 from app.channels.schemas import (
     ChannelCreate,
     ChannelResponse,
@@ -99,33 +100,12 @@ async def add_channel_member(
     payload: MembershipCreate,
     db: AsyncSession = Depends(get_db),
 ) -> Membership:
-    # Verify user exists
-    user = await db.scalar(select(User).where(User.id == payload.user_id))
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-
-    # Verify if user is already a member
-    existing_membership = await db.scalar(
-        select(Membership).where(
-            Membership.user_id == payload.user_id,
-            Membership.channel_id == channel_id,
-        )
-    )
-    if existing_membership:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="User is already a member of this channel",
-        )
-
-    membership = Membership(
-        user_id=payload.user_id,
+    return await service.add_member(
+        db,
         channel_id=channel_id,
-        role=payload.role.value,
+        user_id=payload.user_id,
+        role=payload.role,
     )
-    db.add(membership)
-    await db.commit()
-    await db.refresh(membership)
-    return membership
 
 
 @router.patch(
@@ -139,20 +119,12 @@ async def update_channel_member_role(
     payload: MembershipUpdate,
     db: AsyncSession = Depends(get_db),
 ) -> Membership:
-    # Find membership
-    membership = await db.scalar(
-        select(Membership).where(
-            Membership.user_id == user_id,
-            Membership.channel_id == channel_id,
-        )
+    return await service.update_member_role(
+        db,
+        channel_id=channel_id,
+        user_id=user_id,
+        role=payload.role,
     )
-    if not membership:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership not found")
-
-    membership.role = payload.role.value
-    await db.commit()
-    await db.refresh(membership)
-    return membership
 
 
 @router.delete(
@@ -165,17 +137,6 @@ async def remove_channel_member(
     user_id: UUID,
     db: AsyncSession = Depends(get_db),
 ):
-    # Find membership
-    membership = await db.scalar(
-        select(Membership).where(
-            Membership.user_id == user_id,
-            Membership.channel_id == channel_id,
-        )
-    )
-    if not membership:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership not found")
-
-    await db.delete(membership)
-    await db.commit()
+    await service.remove_member(db, channel_id=channel_id, user_id=user_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

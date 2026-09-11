@@ -1,4 +1,3 @@
-import hashlib
 import math
 from uuid import UUID
 
@@ -16,10 +15,11 @@ from app.bot.llm import (
     generate_answer,
     get_llm_api_key,
 )
+from app.ingestion.embeddings import generate_embedding
 from app.models import Chunk, File
 
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-CHUNK_EMBEDDING_DIMENSION = 384
+CHUNK_EMBEDDING_DIMENSION = 1536
 QUESTION_EMBEDDING_DIMENSION = CHUNK_EMBEDDING_DIMENSION
 RETRIEVAL_TOP_K = 5
 INSUFFICIENT_EVIDENCE_THRESHOLD = 0.15
@@ -31,23 +31,7 @@ def embed_question(question: str) -> list[float]:
     The vector dimension intentionally matches the chunk embeddings used by the
     retrieval pipeline so channel-scoped similarity search stays compatible.
     """
-    text = " ".join((question or "").strip().split())
-    if not text:
-        return [0.0] * CHUNK_EMBEDDING_DIMENSION
-
-    values: list[float] = []
-    token = text.encode("utf-8")
-    for i in range(CHUNK_EMBEDDING_DIMENSION):
-        digest = hashlib.sha256(token + i.to_bytes(4, byteorder="big", signed=False)).digest()
-        raw = int.from_bytes(digest[:8], byteorder="big", signed=False)
-        value = ((raw / (2**64 - 1)) * 2.0) - 1.0
-        values.append(value)
-
-    norm = math.sqrt(sum(value * value for value in values))
-    if norm > 0:
-        values = [value / norm for value in values]
-
-    return values
+    return generate_embedding(question, dimension=CHUNK_EMBEDDING_DIMENSION)
 
 
 def _coerce_vector(values: object) -> list[float]:
