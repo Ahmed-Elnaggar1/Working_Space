@@ -38,6 +38,8 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
+    op.create_index('ix_refresh_tokens_token_hash', 'refresh_tokens', ['token_hash'], unique=True)
+    op.create_index('ix_refresh_tokens_user_id', 'refresh_tokens', ['user_id'], unique=False)
     op.create_table('workspaces',
     sa.Column('id', app.models.GUID(), nullable=False),
     sa.Column('name', sa.String(length=255), nullable=False),
@@ -121,6 +123,8 @@ def downgrade() -> None:
     op.drop_table('files')
     op.drop_table('channels')
     op.drop_table('workspaces')
+    op.drop_index('ix_refresh_tokens_user_id', table_name='refresh_tokens')
+    op.drop_index('ix_refresh_tokens_token_hash', table_name='refresh_tokens')
     op.drop_table('refresh_tokens')
     op.drop_table('users')
     # ### end Alembic commands ###

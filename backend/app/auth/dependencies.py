@@ -1,10 +1,13 @@
 from uuid import UUID
 
-from fastapi import HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, status
 from jose import jwt, JWTError
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.security import JWT_ACCESS_SECRET, JWT_ALGORITHM
+from app.auth.services import AuthService
+from app.core.db import get_db
 
 
 class CurrentUser(BaseModel):
@@ -53,4 +56,10 @@ def get_current_user(request: Request) -> CurrentUser:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
         )
+
+
+async def get_auth_service(
+    db: AsyncSession = Depends(get_db),
+) -> AuthService:
+    return AuthService(db)
 

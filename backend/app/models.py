@@ -138,6 +138,10 @@ class Chunk(Base):
 
 class RefreshToken(Base):
     __tablename__ = "refresh_tokens"
+    __table_args__ = (
+        Index("ix_refresh_tokens_token_hash", "token_hash", unique=True),
+        Index("ix_refresh_tokens_user_id", "user_id"),
+    )
 
     id: Mapped[UUID] = mapped_column(GUID(), primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False)

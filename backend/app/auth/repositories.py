@@ -8,25 +8,32 @@ from app.models import RefreshToken, User
 
 
 class UserRepository:
-    @staticmethod
-    async def get_by_email(db: AsyncSession, email: str) -> User | None:
-        return await db.scalar(select(User).where(User.email == email))
+    def __init__(self, db: AsyncSession):
+        self.db = db
 
-    @staticmethod
-    async def get_by_id(db: AsyncSession, user_id: UUID) -> User | None:
-        return await db.scalar(select(User).where(User.id == user_id))
+    async def get_by_email(self, email: str) -> User | None:
+        return await self.db.scalar(select(User).where(User.email == email))
 
-    @staticmethod
-    async def create(db: AsyncSession, email: str, password_hash: str) -> User:
+    async def get_by_id(self, user_id: UUID) -> User | None:
+        return await self.db.scalar(select(User).where(User.id == user_id))
+
+    async def create(self, email: str, password_hash: str) -> User:
         user = User(email=email, password_hash=password_hash)
-        db.add(user)
-        await db.flush()
+        self.db.add(user)
+        await self.db.flush()
         return user
 
 
 class RefreshTokenRepository:
-    @staticmethod
-    async def create(db: AsyncSession, user_id: UUID, token_hash: str, expires_at: datetime) -> RefreshToken:
+    def __init__(self, db: AsyncSession):
+        self.db = db
+
+    async def create(
+        self,
+        user_id: UUID,
+        token_hash: str,
+        expires_at: datetime,
+    ) -> RefreshToken:
         # Normalize expires_at to timezone-aware UTC if it is naive
         if expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=timezone.utc)
@@ -37,25 +44,34 @@ class RefreshTokenRepository:
             expires_at=expires_at,
             revoked_at=None,
         )
-        db.add(token_record)
-        await db.flush()
+        self.db.add(token_record)
+        await self.db.flush()
         return token_record
 
-    @staticmethod
-    async def get_by_hash(db: AsyncSession, token_hash: str) -> RefreshToken | None:
-        return await db.scalar(select(RefreshToken).where(RefreshToken.token_hash == token_hash))
+    async def get_by_hash(self, token_hash: str) -> RefreshToken | None:
+        return await self.db.scalar(
+            select(RefreshToken).where(RefreshToken.token_hash == token_hash)
+        )
 
-    @staticmethod
-    async def revoke(db: AsyncSession, token_record: RefreshToken) -> None:
+    async def revoke(self, token_record: RefreshToken) -> None:
         token_record.revoked_at = datetime.now(timezone.utc)
-        await db.flush()
+        await self.db.flush()
 
-    @staticmethod
-    async def revoke_all_for_user(db: AsyncSession, user_id: UUID) -> None:
-        await db.execute(
+    async def revoke_if_active(self, token_hash: str) -> bool:
+        result = await self.db.execute(
+            update(RefreshToken)
+            .where(RefreshToken.token_hash == token_hash)
+            .where(RefreshToken.revoked_at.is_(None))
+            .values(revoked_at=datetime.now(timezone.utc))
+        )
+        await self.db.flush()
+        return result.rowcount == 1
+
+    async def revoke_all_for_user(self, user_id: UUID) -> None:
+        await self.db.execute(
             update(RefreshToken)
             .where(RefreshToken.user_id == user_id)
             .where(RefreshToken.revoked_at.is_(None))
             .values(revoked_at=datetime.now(timezone.utc))
         )
-        await db.flush()
+        await self.db.flush()
