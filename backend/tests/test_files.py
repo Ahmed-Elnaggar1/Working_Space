@@ -154,3 +154,27 @@ def test_delete_file_permissions_and_storage_cleanup(client: TestClient) -> None
         files={"file": ("gamma.txt", b"gamma-data", "text/plain")},
     )
     assert denied.status_code == 403
+
+
+def test_upload_unsupported_file_type(client: TestClient) -> None:
+    _, channel_id = create_workspace_and_channel(client, DEV_USER_ID)
+
+    response = client.post(
+        f"/channels/{channel_id}/files",
+        files={"file": ("archive.zip", b"fake-zip-data", "application/zip")},
+    )
+    assert response.status_code == 400
+    assert "Unsupported file type" in response.json()["error"]["message"]
+
+
+def test_upload_sanitizes_filename(client: TestClient) -> None:
+    _, channel_id = create_workspace_and_channel(client, DEV_USER_ID)
+
+    response = client.post(
+        f"/channels/{channel_id}/files",
+        files={"file": ("../../malicious.txt", b"hello", "text/plain")},
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["filename"] == "malicious.txt"
+    assert ".." not in body["storage_path"]

@@ -1,4 +1,6 @@
 import io
+import logging
+from pathlib import Path
 from uuid import UUID, uuid4
 
 from fastapi import (
@@ -22,7 +24,12 @@ from app.ingestion.pipeline import run_ingestion_pipeline
 from app.models import File, Membership
 from app.permissions import require_role
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(tags=["files"])
+
+ALLOWED_EXTENSIONS = {".pdf", ".txt"}
+
 
 # Upload files
 @router.post(
@@ -38,9 +45,20 @@ async def upload_file(
     db: AsyncSession = Depends(get_db),
     _membership: Membership = Depends(require_role("upload_files")),
 ):
+    # Sanitize filename and validate supported file extensions
+    raw_filename = file.filename or "upload"
+    safe_filename = Path(raw_filename).name or "upload"
+    extension = Path(safe_filename).suffix.lower()
+
+    if extension not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unsupported file type. Only PDF (.pdf) and plain text (.txt) files are supported.",
+        )
+
     file_id = uuid4()
     content = await file.read()
-    storage_path = f"channels/{channel_id}/{file_id}/{file.filename or 'upload'}"
+    storage_path = f"channels/{channel_id}/{file_id}/{safe_filename}"
 
     try:
         storage.upload_file(storage_path, content, file.content_type or "application/octet-stream")
@@ -55,7 +73,7 @@ async def upload_file(
     file_record = File(
         id=file_id,
         channel_id=channel_id,
-        filename=file.filename or "upload",
+        filename=safe_filename,
         storage_path=storage_path,
         uploaded_by=current_user.id,
         ingestion_status="pending",
@@ -209,8 +227,8 @@ async def delete_file(
 
     try:
         storage.delete_file(file_record.storage_path)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Failed to delete storage file %s: %s", file_record.storage_path, exc)
 
     await db.delete(file_record)
     await db.commit()
