@@ -15,11 +15,12 @@ from app.bot.llm import (
     generate_answer,
     get_llm_api_key,
 )
+from app.core.config import get_settings
 from app.ingestion.embeddings import generate_embedding
 from app.models import Chunk, File
 
-EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-CHUNK_EMBEDDING_DIMENSION = 1536
+EMBEDDING_MODEL = get_settings().EMBEDDING_MODEL
+CHUNK_EMBEDDING_DIMENSION = get_settings().EMBEDDING_DIMENSION
 QUESTION_EMBEDDING_DIMENSION = CHUNK_EMBEDDING_DIMENSION
 RETRIEVAL_TOP_K = 5
 INSUFFICIENT_EVIDENCE_THRESHOLD = 0.15
