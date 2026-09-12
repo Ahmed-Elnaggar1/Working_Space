@@ -71,7 +71,7 @@ async def _run_ingestion(file_id: UUID, db: AsyncSession) -> None:
                 file_id=file_id,
                 channel_id=file_record.channel_id,  # Denormalized from file for fast permissions filtering
                 page_number=page_num,
-                section=None,
+                section=chunk_dict.get("section"),
                 content=text_content,
                 embedding=embedding,
             )

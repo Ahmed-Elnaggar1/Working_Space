@@ -24,7 +24,7 @@ from app.permissions import require_role
 
 router = APIRouter(tags=["files"])
 
-
+# Upload files
 @router.post(
     "/channels/{channel_id}/files",
     response_model=FileResponse,
@@ -50,6 +50,8 @@ async def upload_file(
             detail=f"Failed to store uploaded file: {str(exc)}",
         ) from exc
 
+    # a file is created with pending ingestion status, and then run_ingestion_pipeline is called in background tasks
+    # this is done to make the API response faster, as the file is already uploaded and ready to be used
     file_record = File(
         id=file_id,
         channel_id=channel_id,
@@ -147,10 +149,10 @@ async def retry_ingestion(
     if not file_record:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
 
-    if file_record.ingestion_status != "failed":
+    if file_record.ingestion_status == "completed":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only failed file ingestions can be retried",
+            detail="Completed file ingestions cannot be retried",
         )
 
     file_record.ingestion_status = "pending"

@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     OLLAMA_MODEL: str = "qwen2.5:7b-instruct"
     OLLAMA_BASE_URL: str = "http://localhost:11434"
 
+    EMBEDDING_DIMENSION: int = 384
+    EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
+
     AWS_ENDPOINT_URL: str | None = None
     AWS_ACCESS_KEY_ID: str | None = None
     AWS_SECRET_ACCESS_KEY: str | None = None
