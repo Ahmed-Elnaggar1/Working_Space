@@ -208,21 +208,12 @@ async def delete_file(
     if file_record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
 
-    membership = await db.scalar(
-        select(Membership).where(
-            Membership.user_id == current_user.id,
-            Membership.channel_id == channel_id,
-        )
-    )
-    if membership is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
-
-    if membership.role == "read_only":
+    if _membership.role == "read_only":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied")
-    if membership.role == "member":
+    if _membership.role == "member":
         if file_record.uploaded_by != current_user.id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied")
-    elif membership.role not in {"owner", "admin"}:
+    elif _membership.role not in {"owner", "admin"}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied")
 
     try:
