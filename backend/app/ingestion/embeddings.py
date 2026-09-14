@@ -1,28 +1,31 @@
 import hashlib
-import numpy as np
+import math
+
+from app.core.config import get_settings
 
 
-def generate_embedding(text: str, dimension: int = 1536) -> list[float]:
-    """Generates a deterministic float vector of the specified dimension for a text.
+def generate_embedding(text: str, dimension: int | None = None) -> list[float]:
+    """Generates a deterministic L2-normalized float vector for a text.
     
-    Uses SHA-256 hashing to seed NumPy's default random number generator, producing
-    a normalized L2 vector. This ensures identical inputs produce identical embeddings
-    with no network dependency.
+    Uses SHA-256 hashing to produce a stable vector of the configured dimension,
+    ensuring identical inputs produce identical embeddings without external network dependencies.
     """
-    if not text:
-        return [0.0] * dimension
+    dim = dimension if dimension is not None else get_settings().EMBEDDING_DIMENSION
+    normalized_text = " ".join((text or "").strip().split())
+    if not normalized_text:
+        return [0.0] * dim
 
-    # Compute SHA-256 of text
-    hash_bytes = hashlib.sha256(text.encode("utf-8")).digest()
-    # Convert first 4 bytes of hash to seed integer
-    seed = int.from_bytes(hash_bytes[:4], "big")
+    values: list[float] = []
+    token = normalized_text.encode("utf-8")
+    for i in range(dim):
+        digest = hashlib.sha256(token + i.to_bytes(4, byteorder="big", signed=False)).digest()
+        raw = int.from_bytes(digest[:8], byteorder="big", signed=False)
+        value = ((raw / (2**64 - 1)) * 2.0) - 1.0
+        values.append(value)
 
-    # Generate normalized random vector
-    rng = np.random.default_rng(seed)
-    vec = rng.standard_normal(dimension)
-    
-    norm = np.linalg.norm(vec)
+    norm = math.sqrt(sum(v * v for v in values))
     if norm > 0:
-        vec = vec / norm
+        values = [v / norm for v in values]
 
-    return vec.tolist()
+    return values
+

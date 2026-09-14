@@ -82,15 +82,7 @@ class RequireRole:
                 detail="Invalid channel ID format",
             )
 
-        # 1. Validate that the channel exists in database
-        channel_exists = await db.scalar(select(Channel).where(Channel.id == channel_id))
-        if not channel_exists:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Channel not found",
-            )
-
-        # 2. Check user's channel membership
+        # Check user's channel membership
         membership = await db.scalar(
             select(Membership).where(
                 Membership.user_id == current_user.id,
@@ -98,13 +90,13 @@ class RequireRole:
             )
         )
         if not membership:
-            # Maintain security confidentiality: return 404 for non-members
+            # Maintain security confidentiality: return 404 for non-members or non-existent channels
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Channel not found",
             )
 
-        # 3. Check role authorization
+        # Check role authorization against matrix
         allowed_actions = ROLE_PERMISSIONS.get(membership.role, set())
         if self.action not in allowed_actions:
             raise HTTPException(

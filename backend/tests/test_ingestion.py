@@ -165,15 +165,30 @@ def test_chunker_retains_page_numbers():
     assert chunks[2]["page_number"] == 2
 
 
+def test_chunker_extracts_section_headings():
+    pages = [
+        (1, "# Introduction\nThis is the introductory text for page one."),
+        (2, "## Methodology\nDetails about the method used on page two."),
+    ]
+    chunks = chunk_parsed_content(pages, max_words=300, overlap=50)
+    assert len(chunks) == 2
+    assert chunks[0]["section"] == "Introduction"
+    assert chunks[1]["section"] == "Methodology"
+
+
 # ==================== EMBEDDINGS TESTS ====================
 
 def test_embeddings_generation_dimension_and_determinism():
     text = "Hello world embedding test"
-    emb1 = generate_embedding(text, dimension=1536)
-    emb2 = generate_embedding(text, dimension=1536)
+    emb1 = generate_embedding(text)
+    emb2 = generate_embedding(text)
     
-    assert len(emb1) == 1536
+    assert len(emb1) == 384
     assert emb1 == emb2  # Determinism
+    
+    # Check custom dimension support
+    custom_emb = generate_embedding(text, dimension=1536)
+    assert len(custom_emb) == 1536
     
     # Check L2 Normalization (norm should be ~1.0)
     import math
@@ -216,7 +231,7 @@ def test_pipeline_success_path(db_session: Session, mock_storage):
     assert len(chunks) == 1
     assert chunks[0].page_number == 1
     assert "Hello world" in chunks[0].content
-    assert len(chunks[0].embedding) == 1536
+    assert len(chunks[0].embedding) == 384
     # Denormalized channel_id matches parent file channel_id
     assert chunks[0].channel_id == channel.id
 
@@ -341,7 +356,7 @@ def test_api_retry_ingestion(client: TestClient, db_session: Session, mock_stora
         channel_id=channel.id,
         page_number=1,
         content="stale content",
-        embedding=[0.0] * 1536
+        embedding=[0.0] * 384
     )
     db_session.add(dummy_chunk)
     db_session.commit()
@@ -411,3 +426,76 @@ def test_files_permissions_enforcement(client: TestClient, db_session: Session):
     # 4. Read-only member lists files -> should succeed (200)
     response = client.get(f"/channels/{channel.id}/files")
     assert response.status_code == 200
+
+
+def test_api_retry_stuck_processing_file(client: TestClient, db_session: Session, mock_storage):
+    _, channel = setup_workspace_and_channel(db_session, DEV_USER_ID)
+    
+    file_id = uuid4()
+    storage_path = f"channels/{channel.id}/{file_id}/stuck.txt"
+    mock_storage[storage_path] = b"Recovered stuck file content"
+    
+    # File stuck in processing (e.g. server crash during background task)
+    file_record = File(
+        id=file_id,
+        channel_id=channel.id,
+        filename="stuck.txt",
+        storage_path=storage_path,
+        uploaded_by=DEV_USER_ID,
+        ingestion_status="processing",
+    )
+    db_session.add(file_record)
+    db_session.commit()
+    
+    # Retry should succeed and reset to pending
+    retry_response = client.post(f"/channels/{channel.id}/files/{file_id}/retry-ingestion")
+    assert retry_response.status_code == 200
+    assert retry_response.json()["ingestion_status"] == "pending"
+    
+    # Run pipeline to complete
+    asyncio.run(run_ingestion_pipeline(file_id, db=AsyncSessionAdapter(db_session)))
+    
+    db_session.refresh(file_record)
+    assert file_record.ingestion_status == "completed"
+
+
+def test_ingested_chunks_compatible_with_bot_search(db_session: Session, mock_storage):
+    from app.bot import search_channel_chunks
+    
+    _, channel = setup_workspace_and_channel(db_session, DEV_USER_ID)
+    file_id = uuid4()
+    storage_path = f"channels/{channel.id}/{file_id}/handbook.txt"
+    mock_storage[storage_path] = b"# Guidelines\nThe company release date is 2027-01-15."
+    
+    file_record = File(
+        id=file_id,
+        channel_id=channel.id,
+        filename="handbook.txt",
+        storage_path=storage_path,
+        uploaded_by=DEV_USER_ID,
+        ingestion_status="pending",
+    )
+    db_session.add(file_record)
+    db_session.commit()
+    
+    # Run pipeline
+    asyncio.run(run_ingestion_pipeline(file_id, db=AsyncSessionAdapter(db_session)))
+    
+    # Check section was stored
+    chunks = db_session.scalars(select(Chunk).where(Chunk.file_id == file_id)).all()
+    assert len(chunks) == 1
+    assert chunks[0].section == "Guidelines"
+    
+    # Search via bot module using question embedding
+    results = asyncio.run(
+        search_channel_chunks(
+            db=AsyncSessionAdapter(db_session),
+            channel_id=channel.id,
+            question="When is the release date?",
+            limit=5,
+        )
+    )
+    assert len(results) == 1
+    assert results[0].id == chunks[0].id
+    assert results[0].page_number == 1
+
