@@ -73,5 +73,5 @@ These block frontend work below and should be picked up first, ideally in parall
 - [ ] Refreshing the page keeps the user logged in; logging out actually revokes the refresh token server-side, not just locally.
 - [ ] A workspace's channel list never shows a channel the current user isn't a member of.
 - [ ] Every error case listed in S6-19 has been manually triggered at least once and confirmed to display correctly, not just assumed from the code.
-- [ ] The three API gaps (Epic 0) are merged and documented in `API.md` before being relied upon by the frontend stories that need them.
+- [x] The three API gaps (Epic 0) are merged and documented in `API.md` before being relied upon by the frontend stories that need them.
 - [ ] Next sprint backlog (file upload/list + membership management UI) is created from the remaining gaps.

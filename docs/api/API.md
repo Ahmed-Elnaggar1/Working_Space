@@ -61,12 +61,18 @@ Request:
 Response `200`:
 
 ```json
-{ "access_token": "jwt", "token_type": "bearer" }
+{ "access_token": "jwt", "refresh_token": "jwt", "token_type": "bearer" }
 ```
 
 ### `POST /auth/refresh`
 
-Accepts a refresh token and returns a rotated access token. Refresh tokens must be revocable and must not be stored plaintext.
+Accepts a refresh token via `HttpOnly` cookie or JSON payload `{"refresh_token":"jwt"}` and returns a rotated access token and refresh token. Refresh tokens must be revocable and must not be stored plaintext.
+
+### `POST /auth/logout`
+
+Request: optional `{"refresh_token":"jwt"}` (or via `refresh_token` cookie).
+
+Revokes the caller's refresh token server-side (`revoked_at` set in database) and clears the cookie. Returns `204 No Content`. Subsequent attempts to use this token at `/auth/refresh` will be rejected.
 
 ## Workspaces and channels
 
@@ -76,11 +82,29 @@ Request: `{"name":"Engineering"}`
 
 Response `201`: workspace object with `id`, `name`, `owner_id`, and `created_at`.
 
+### `GET /workspaces`
+
+Returns a list of workspace objects the caller owns or has at least one channel membership in. Unrelated users receive an empty list `[]`.
+
+Response `200`: `[ { "id": "uuid", "name": "Engineering", "owner_id": "uuid", "created_at": "timestamp" } ]`
+
+### `GET /workspaces/{workspace_id}`
+
+Returns the workspace object if the caller is the owner or a member of at least one channel in the workspace. If the workspace does not exist or the caller is not authorized, returns `404 Not Found` (anti-reconnaissance rule matching S2-07).
+
+Response `200`: `{ "id": "uuid", "name": "Engineering", "owner_id": "uuid", "created_at": "timestamp" }`
+
 ### `POST /workspaces/{workspace_id}/channels`
 
 Request: `{"name":"Backend"}`
 
 Response `201`: channel object with `id`, `workspace_id`, `name`, and `created_at`.
+
+### `GET /workspaces/{workspace_id}/channels`
+
+Lists only the channels within that workspace the caller is a member of (per the channel isolation rule in permissions). Returns `404 Not Found` if the workspace does not exist or the caller has no access to the workspace.
+
+Response `200`: `[ { "id": "uuid", "workspace_id": "uuid", "name": "general", "created_at": "timestamp" } ]`
 
 ### `GET /channels/{channel_id}`
 
