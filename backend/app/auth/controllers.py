@@ -8,7 +8,14 @@ from app.auth.exceptions import (
     UserAlreadyExistsError,
     UserNotFoundError,
 )
-from app.auth.schemas import TokenResponse, UserLogin, UserRegister, UserResponse
+from app.auth.schemas import (
+    LogoutRequest,
+    TokenRefreshRequest,
+    TokenResponse,
+    UserLogin,
+    UserRegister,
+    UserResponse,
+)
 from app.auth.services import AuthService
 from app.core.config import settings
 
@@ -73,7 +80,10 @@ class AuthController:
             result.refresh_token,
             result.refresh_token_max_age,
         )
-        return TokenResponse(access_token=result.access_token)
+        return TokenResponse(
+            access_token=result.access_token,
+            refresh_token=result.refresh_token,
+        )
 
     @classmethod
     async def refresh(
@@ -81,9 +91,15 @@ class AuthController:
         service: AuthService,
         request: Request,
         response: Response,
+        payload: TokenRefreshRequest | None = None,
     ) -> TokenResponse:
+        raw_token = (
+            payload.refresh_token
+            if (payload and payload.refresh_token)
+            else request.cookies.get(cls.COOKIE_NAME)
+        )
         try:
-            result = await service.refresh(request.cookies.get(cls.COOKIE_NAME))
+            result = await service.refresh(raw_token)
         except AuthError as error:
             cls._clear_refresh_cookie(response)
             raise HTTPException(
@@ -96,7 +112,10 @@ class AuthController:
             result.refresh_token,
             result.refresh_token_max_age,
         )
-        return TokenResponse(access_token=result.access_token)
+        return TokenResponse(
+            access_token=result.access_token,
+            refresh_token=result.refresh_token,
+        )
 
     @classmethod
     async def logout(
@@ -104,9 +123,15 @@ class AuthController:
         service: AuthService,
         request: Request,
         response: Response,
+        payload: LogoutRequest | None = None,
     ) -> None:
+        raw_token = (
+            payload.refresh_token
+            if (payload and payload.refresh_token)
+            else request.cookies.get(cls.COOKIE_NAME)
+        )
         try:
-            await service.logout(request.cookies.get(cls.COOKIE_NAME))
+            await service.logout(raw_token)
         finally:
             cls._clear_refresh_cookie(response)
 

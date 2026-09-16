@@ -98,8 +98,8 @@ def test_successful_login(client: TestClient):
     assert "access_token" in body
     assert body["token_type"] == "bearer"
     
-    # Verify that refresh token is set in HttpOnly cookie and not returned in json
-    assert "refresh_token" not in body
+    # S6-04: Verify that refresh token is returned in json body and also set in HttpOnly cookie
+    assert "refresh_token" in body
     assert "refresh_token" in response.cookies
 
 

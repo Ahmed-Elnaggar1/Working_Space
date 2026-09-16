@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import CurrentUser, get_current_user
 from app.core.db import get_db
-from app.models import Channel, Membership, Role
+from app.models import Membership, Role
 
 # Central role-action mapping based on permissions.md
 ROLE_PERMISSIONS = {
