@@ -1,14 +1,19 @@
-import React from 'react';
-import styles from './AuthLayout.module.css';
+import type { ReactNode } from "react";
+import styles from "./AuthLayout.module.css";
 
 interface AuthLayoutProps {
   title: string;
   subtitle: string;
-  children: React.ReactNode;
-  footer: React.ReactNode;
+  children: ReactNode;
+  footer: ReactNode;
 }
 
-export function AuthLayout({ title, subtitle, children, footer }: AuthLayoutProps) {
+export function AuthLayout({
+  title,
+  subtitle,
+  children,
+  footer,
+}: AuthLayoutProps) {
   return (
     <div className={styles.container}>
       <div className={styles.card}>
