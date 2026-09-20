@@ -1,4 +1,5 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
+import { ProtectedRoute } from "../features/auth/components/ProtectedRoute";
 import LoginPage from "../pages/LoginPage";
 import SignupPage from "../pages/SignupPage";
 import WorkspacesPage from "../pages/WorkspacesPage";
@@ -18,8 +19,8 @@ export const router = createBrowserRouter([
     element: <SignupPage />,
   },
   {
-    path: "/workspaces",
-    element: <WorkspacesPage />,
+    element: <ProtectedRoute />,
+    children: [{ path: "/workspaces", element: <WorkspacesPage /> }],
   },
   {
     path: "*",

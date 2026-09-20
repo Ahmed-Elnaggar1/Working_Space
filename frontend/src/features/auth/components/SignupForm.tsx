@@ -1,13 +1,20 @@
 import { useState, type SubmitEvent } from "react";
 import styles from "../../../shared/layouts/AuthLayout/AuthLayout.module.css";
+import type { SignupInput } from "../types";
 
-export function SignupForm() {
+interface SignupFormProps {
+  onSubmit: (input: SignupInput) => Promise<void>;
+  error: string | null;
+  isSubmitting: boolean;
+}
+
+export function SignupForm({ onSubmit, error, isSubmitting }: SignupFormProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
+  async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
-    // Auth API integration will be added at the feature boundary.
+    await onSubmit({ email, password });
   }
 
   return (
@@ -45,8 +52,14 @@ export function SignupForm() {
         />
       </div>
 
-      <button type="submit" className={styles.submitBtn}>
-        Create Account
+      {error && <p className={styles.error}>{error}</p>}
+
+      <button
+        type="submit"
+        className={styles.submitBtn}
+        disabled={isSubmitting}
+      >
+        {isSubmitting ? "Creating Account..." : "Create Account"}
       </button>
     </form>
   );
