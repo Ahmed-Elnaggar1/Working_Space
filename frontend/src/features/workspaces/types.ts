@@ -4,3 +4,7 @@ export interface Workspace {
   owner_id: string;
   created_at: string;
 }
+
+export interface WorkspaceCreateInput {
+  name: string;
+}

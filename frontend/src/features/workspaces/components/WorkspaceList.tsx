@@ -4,7 +4,11 @@ import { getWorkspaces } from "../api";
 import type { Workspace } from "../types";
 import styles from "./WorkspaceList.module.css";
 
-export function WorkspaceList() {
+interface WorkspaceListProps {
+  refreshKey: number;
+}
+
+export function WorkspaceList({ refreshKey }: WorkspaceListProps) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -13,6 +17,8 @@ export function WorkspaceList() {
     let isMounted = true;
 
     async function loadWorkspaces() {
+      setIsLoading(true);
+      setError(null);
       try {
         const result = await getWorkspaces();
         if (isMounted) {
@@ -38,7 +44,7 @@ export function WorkspaceList() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [refreshKey]);
 
   if (isLoading) {
     return <p className={styles.status}>Loading workspaces...</p>;

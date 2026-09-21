@@ -1,13 +1,15 @@
-import { WorkspaceList } from "../features/workspaces/components/WorkspaceList";
-import styles from "./WorkspacesPage.module.css";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../features/auth/useAuth";
+import { CreateWorkspaceForm } from "../features/workspaces/components/CreateWorkspaceForm";
+import { WorkspaceList } from "../features/workspaces/components/WorkspaceList";
+import styles from "./WorkspacesPage.module.css";
 
 export default function WorkspacesPage() {
   const navigate = useNavigate();
   const { logout, getErrorMessage } = useAuth();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [workspaceRefreshKey, setWorkspaceRefreshKey] = useState(0);
 
   async function handleLogout() {
     setIsLoggingOut(true);
@@ -42,7 +44,10 @@ export default function WorkspacesPage() {
             </button>
           </div>
         </header>
-        <WorkspaceList />
+        <CreateWorkspaceForm
+          onCreated={() => setWorkspaceRefreshKey((key) => key + 1)}
+        />
+        <WorkspaceList refreshKey={workspaceRefreshKey} />
       </main>
     </div>
   );
