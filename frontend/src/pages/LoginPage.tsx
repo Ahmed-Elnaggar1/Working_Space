@@ -1,13 +1,16 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../features/auth/useAuth";
 import { LoginForm } from "../features/auth/components/LoginForm";
 import { AuthLayout } from "../shared/layouts/AuthLayout";
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { login, getErrorMessage } = useAuth();
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    location.state?.logoutError ?? null,
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function handleSubmit(input: { email: string; password: string }) {
