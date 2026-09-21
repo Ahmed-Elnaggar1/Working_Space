@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { ApiError } from "../../../shared/api";
 import { getWorkspaces } from "../api";
 import type { Workspace } from "../types";
@@ -66,7 +67,9 @@ export function WorkspaceList({ refreshKey }: WorkspaceListProps) {
     <ul className={styles.list}>
       {workspaces.map((workspace) => (
         <li className={styles.item} key={workspace.id}>
-          <h2>{workspace.name}</h2>
+          <h2>
+            <Link to={`/workspaces/${workspace.id}`}>{workspace.name}</Link>
+          </h2>
           <p>Created {new Date(workspace.created_at).toLocaleDateString()}</p>
         </li>
       ))}

@@ -3,6 +3,7 @@ import { ProtectedRoute } from "../features/auth/components/ProtectedRoute";
 import LoginPage from "../pages/LoginPage";
 import SignupPage from "../pages/SignupPage";
 import WorkspacesPage from "../pages/WorkspacesPage";
+import WorkspaceDetailPage from "../pages/WorkspaceDetailPage";
 import NotFoundPage from "../pages/NotFoundPage";
 
 export const router = createBrowserRouter([
@@ -20,7 +21,13 @@ export const router = createBrowserRouter([
   },
   {
     element: <ProtectedRoute />,
-    children: [{ path: "/workspaces", element: <WorkspacesPage /> }],
+    children: [
+      { path: "/workspaces", element: <WorkspacesPage /> },
+      {
+        path: "/workspaces/:workspaceId",
+        element: <WorkspaceDetailPage />,
+      },
+    ],
   },
   {
     path: "*",
