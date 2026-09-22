@@ -1,5 +1,17 @@
 import { api } from "../../shared/api";
-import type { Channel, Workspace, WorkspaceCreateInput } from "./types";
+import type {
+  Channel,
+  ChannelCreateInput,
+  Workspace,
+  WorkspaceCreateInput,
+} from "./types";
+
+export function createChannel(
+  workspaceId: string,
+  input: ChannelCreateInput,
+): Promise<Channel> {
+  return api.post<Channel>(`/workspaces/${workspaceId}/channels`, input);
+}
 
 export function createWorkspace(
   input: WorkspaceCreateInput,

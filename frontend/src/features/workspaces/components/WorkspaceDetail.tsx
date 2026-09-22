@@ -6,9 +6,13 @@ import styles from "./WorkspaceDetail.module.css";
 
 interface WorkspaceDetailProps {
   workspaceId: string;
+  refreshKey: number;
 }
 
-export function WorkspaceDetail({ workspaceId }: WorkspaceDetailProps) {
+export function WorkspaceDetail({
+  workspaceId,
+  refreshKey,
+}: WorkspaceDetailProps) {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -51,7 +55,7 @@ export function WorkspaceDetail({ workspaceId }: WorkspaceDetailProps) {
     return () => {
       isMounted = false;
     };
-  }, [workspaceId]);
+  }, [workspaceId, refreshKey]);
 
   if (isLoading) {
     return <p className={styles.status}>Loading workspace...</p>;

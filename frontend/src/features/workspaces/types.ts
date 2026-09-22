@@ -15,3 +15,7 @@ export interface Channel {
   name: string;
   created_at: string;
 }
+
+export interface ChannelCreateInput {
+  name: string;
+}
