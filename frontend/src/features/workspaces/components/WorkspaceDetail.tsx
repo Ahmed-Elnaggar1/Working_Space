@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { ApiError } from "../../../shared/api";
 import { getWorkspace, getWorkspaceChannels } from "../api";
 import type { Channel, Workspace } from "../types";
@@ -82,7 +83,9 @@ export function WorkspaceDetail({
         <ul className={styles.list}>
           {channels.map((channel) => (
             <li className={styles.item} key={channel.id}>
-              <h2>{channel.name}</h2>
+              <h2>
+                <Link to={`/channels/${channel.id}`}>{channel.name}</Link>
+              </h2>
             </li>
           ))}
         </ul>

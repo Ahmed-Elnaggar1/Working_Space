@@ -1,0 +1,28 @@
+.shell {
+  padding: 1.5rem;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.shell h1 {
+  color: var(--text-primary);
+  font-size: 1.75rem;
+}
+
+.eyebrow {
+  color: var(--color-primary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.status {
+  margin-top: 0.5rem;
+  color: var(--text-secondary);
+}
+
+.error {
+  color: var(--color-error);
+}

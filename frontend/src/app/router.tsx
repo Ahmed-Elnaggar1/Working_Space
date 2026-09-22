@@ -4,6 +4,7 @@ import LoginPage from "../pages/LoginPage";
 import SignupPage from "../pages/SignupPage";
 import WorkspacesPage from "../pages/WorkspacesPage";
 import WorkspaceDetailPage from "../pages/WorkspaceDetailPage";
+import ChannelDetailPage from "../pages/ChannelDetailPage";
 import NotFoundPage from "../pages/NotFoundPage";
 
 export const router = createBrowserRouter([
@@ -26,6 +27,10 @@ export const router = createBrowserRouter([
       {
         path: "/workspaces/:workspaceId",
         element: <WorkspaceDetailPage />,
+      },
+      {
+        path: "/channels/:channelId",
+        element: <ChannelDetailPage />,
       },
     ],
   },
