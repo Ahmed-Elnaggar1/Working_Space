@@ -41,3 +41,13 @@ class MembershipResponse(BaseModel):
     channel_id: UUID
     role: str
 
+
+class ChannelMemberResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    user_id: UUID
+    email: str
+    channel_id: UUID
+    role: str
+

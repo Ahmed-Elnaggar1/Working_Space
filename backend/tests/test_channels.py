@@ -116,6 +116,48 @@ def test_unknown_channel_returns_not_found(client: TestClient) -> None:
     assert response.status_code == 404
 
 
+def test_read_only_member_can_list_channel_members(client: TestClient) -> None:
+    workspace_id = create_workspace(client)
+    with app.state.test_session_factory() as session:
+        from app.models import User
+
+        session.add(User(id=DEV_USER_ID, email="owner@example.com", password_hash="dummy"))
+        session.commit()
+
+    created = client.post(f"/workspaces/{workspace_id}/channels", json={"name": "Backend"})
+    channel_id = created.json()["id"]
+
+    member_id = uuid4()
+    with app.state.test_session_factory() as session:
+        from app.models import User
+
+        session.add(User(id=member_id, email="readonly@example.com", password_hash="dummy"))
+        session.add(Membership(user_id=member_id, channel_id=UUID(channel_id), role=Role.READ_ONLY.value))
+        session.commit()
+
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(id=member_id)
+    response = client.get(f"/channels/{channel_id}/members")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) >= 2
+    roles = {item["role"] for item in body}
+    assert Role.OWNER.value in roles
+    assert Role.READ_ONLY.value in roles
+    assert any(item["email"] == "readonly@example.com" for item in body)
+
+
+def test_non_member_cannot_list_channel_members(client: TestClient) -> None:
+    workspace_id = create_workspace(client)
+    created = client.post(f"/workspaces/{workspace_id}/channels", json={"name": "Backend"})
+    channel_id = created.json()["id"]
+
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(id=uuid4())
+    response = client.get(f"/channels/{channel_id}/members")
+
+    assert response.status_code == 404
+
+
 def test_add_channel_member_success(client: TestClient) -> None:
     workspace_id = create_workspace(client)
     created = client.post(f"/workspaces/{workspace_id}/channels", json={"name": "Backend"})

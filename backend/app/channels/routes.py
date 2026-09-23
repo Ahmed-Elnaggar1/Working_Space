@@ -8,9 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import CurrentUser, get_current_user
 from app.channels import service
 from app.core.db import get_db
-from app.models import Channel, Membership, Role, Workspace
+from app.models import Channel, Membership, Role, User, Workspace
 from app.channels.schemas import (
     ChannelCreate,
+    ChannelMemberResponse,
     ChannelResponse,
     MembershipCreate,
     MembershipResponse,
@@ -87,6 +88,39 @@ async def get_channel(
     if channel is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
     return channel
+
+
+@router.get(
+    "/channels/{channel_id}/members",
+    response_model=list[ChannelMemberResponse],
+    dependencies=[Depends(require_role("view_members"))],
+)
+async def list_channel_members(
+    channel_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> list[dict[str, UUID | str]]:
+    rows = await db.execute(
+        select(
+            Membership.id,
+            Membership.user_id,
+            User.email,
+            Membership.channel_id,
+            Membership.role,
+        )
+        .join(User, User.id == Membership.user_id)
+        .where(Membership.channel_id == channel_id)
+        .order_by(User.email, Membership.user_id)
+    )
+    return [
+        {
+            "id": row[0],
+            "user_id": row[1],
+            "email": row[2],
+            "channel_id": row[3],
+            "role": row[4],
+        }
+        for row in rows.all()
+    ]
 
 
 @router.post(

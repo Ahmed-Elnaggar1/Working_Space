@@ -112,6 +112,24 @@ Returns a channel only when the caller has membership.
 
 ## Memberships
 
+### `GET /channels/{channel_id}/members`
+
+Returns the channel's members, each with their `id`, `user_id`, `email`, `channel_id`, and `role`. Any channel member can view this list, including `read_only` members.
+
+Response `200`:
+
+```json
+[
+  {
+    "id": "uuid",
+    "user_id": "uuid",
+    "email": "member@example.com",
+    "channel_id": "uuid",
+    "role": "owner"
+  }
+]
+```
+
 ### `POST /channels/{channel_id}/members`
 
 Request:

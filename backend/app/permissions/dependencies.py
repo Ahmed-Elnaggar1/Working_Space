@@ -12,6 +12,7 @@ from app.models import Membership, Role
 ROLE_PERMISSIONS = {
     Role.OWNER.value: {
         "view_channel",
+        "view_members",
         "view_messages",
         "send_messages",
         "ask_bot",
@@ -27,6 +28,7 @@ ROLE_PERMISSIONS = {
     },
     Role.ADMIN.value: {
         "view_channel",
+        "view_members",
         "view_messages",
         "send_messages",
         "ask_bot",
@@ -40,6 +42,7 @@ ROLE_PERMISSIONS = {
     },
     Role.MEMBER.value: {
         "view_channel",
+        "view_members",
         "view_messages",
         "send_messages",
         "ask_bot",
@@ -49,6 +52,7 @@ ROLE_PERMISSIONS = {
     },
     Role.READ_ONLY.value: {
         "view_channel",
+        "view_members",
         "view_messages",
         "ask_bot",
         "view_files",
