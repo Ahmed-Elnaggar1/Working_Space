@@ -1,0 +1,17 @@
+.page {
+  min-height: 100vh;
+  padding: 2rem;
+  background: var(--bg-app);
+}
+
+.content {
+  display: grid;
+  gap: 1.5rem;
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.content > a {
+  justify-self: start;
+}

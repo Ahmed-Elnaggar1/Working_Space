@@ -47,8 +47,8 @@ These block frontend work below and should be picked up first, ideally in parall
 
 ## Open questions to resolve during the sprint
 
-- Whether `GET /workspaces/{id}/channels` needs pagination now or can wait — likely fine unpaginated for a small team, but worth a one-line decision in `API.md` rather than leaving it implicit.
-- UI convention for showing errors (inline field errors vs. a toast/banner) — not specified anywhere yet; pick one and apply it consistently, same reasoning as the backend's "one documented error shape" rule.
+- `GET /workspaces/{id}/channels` is intentionally unpaginated for Sprint 6; pagination can be added with the next navigation backlog if channel counts require it.
+- Sprint 6 uses inline form errors for mutation failures and inline status/error blocks for page loading failures.
 
 ## Out of scope
 
@@ -73,5 +73,7 @@ These block frontend work below and should be picked up first, ideally in parall
 - [ ] Refreshing the page keeps the user logged in; logging out actually revokes the refresh token server-side, not just locally.
 - [ ] A workspace's channel list never shows a channel the current user isn't a member of.
 - [ ] Every error case listed in S6-19 has been manually triggered at least once and confirmed to display correctly, not just assumed from the code.
+- [x] The S6-20 smoke flow is documented in `frontend/docs/sprint-6-manual-qa.md`.
+- [x] Frontend lint, build, and tests run in `.github/workflows/frontend-quality.yml`.
 - [x] The three API gaps (Epic 0) are merged and documented in `API.md` before being relied upon by the frontend stories that need them.
 - [ ] Next sprint backlog (file upload/list + membership management UI) is created from the remaining gaps.
