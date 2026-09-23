@@ -1,85 +1,102 @@
 # Frontend Architecture & Component Workflow
 
-This document illustrates the execution lifecycle, routing hierarchy, and component relationships currently implemented in the frontend application (`frontend/`).
+This document illustrates the complete execution lifecycle, routing hierarchy, state flow, and component relationships in the frontend application (`frontend/`).
 
 ---
 
-## High-Level Lifecycle Diagram
+## 1. High-Level Lifecycle & Workflow Diagram
 
 ```mermaid
 flowchart TD
-    %% Browser & Bootstrap
-    Browser["🌐 Web Browser (URL Request)"] --> HTML["📄 index.html<br/>#40;mounts &lt;div id='root'&gt;#41;"]
-    HTML --> Main["⚡ src/main.tsx<br/>#40;Entry Point#41;"]
-    
-    %% Global styling
-    IndexCSS["🎨 src/index.css<br/>#40;Global Design Tokens, Theme &amp; Resets#41;"] -.->|Imports &amp; Injects| Main
-    
-    %% Root Component
-    Main --> App["📦 src/App.tsx<br/>#40;Root Component#41;"]
-    App --> RouterProvider["🔀 &lt;RouterProvider router={router} /&gt;"]
-    
-    %% Router
-    RouterProvider --> Router["🛣️ src/routes/index.tsx<br/>#40;createBrowserRouter#41;"]
-    
-    %% Route Branches
-    Router -->|Path: '/'| Redirect["↪️ &lt;Navigate to='/login' replace /&gt;"]
-    Router -->|Path: '/login'| LoginPage["📄 LoginPage.tsx<br/>#40;S6-10 Placeholder#41;"]
-    Router -->|Path: '/signup'| SignupPage["📄 SignupPage.tsx<br/>#40;S6-09 Placeholder#41;"]
-    Router -->|Path: '/workspaces'| WorkspacesPage["📄 WorkspacesPage.tsx<br/>#40;S6-14/16 Placeholder#41;"]
-    Router -->|Path: '*'| NotFoundPage["⚠️ NotFoundPage.tsx<br/>#40;404 Fallback#41;"]
-
-    %% AuthLayout Subtree
-    subgraph AuthSystem ["Reusable Auth System (Design System Layer)"]
-        AuthLayout["🧱 src/components/AuthLayout/AuthLayout.tsx<br/>#40;Glassmorphic Card Shell, Logo &amp; Header#41;"]
-        AuthCSS["🎨 AuthLayout.module.css<br/>#40;Glow, Inputs, Button &amp; Card Styles#41;"]
-        AuthCSS -.->|Scoped Styles| AuthLayout
+    %% Browser & HTML Shell
+    subgraph Bootstrap ["1. Bootstrapping Layer"]
+        Browser["🌐 Web Browser (URL Request)"] --> HTML["📄 index.html<br/>(Mount point: &lt;div id='root'&gt;)"]
+        HTML --> Main["⚡ src/main.tsx<br/>(createRoot &amp; StrictMode)"]
+        IndexCSS["🎨 src/index.css<br/>(Global CSS Tokens &amp; Theme)"] -.->|Injected globally| Main
     end
 
-    LoginPage -->|Renders within| AuthLayout
-    SignupPage -->|Renders within| AuthLayout
+    %% Root & Providers
+    subgraph RootLayer ["2. Application Shell & State Providers"]
+        Main --> App["📦 src/app/App.tsx<br/>(Root Application Component)"]
+        App --> AuthProvider["🔐 src/features/auth/AuthProvider.tsx<br/>(Manages User Session, Tokens, Login/Logout)"]
+        AuthProvider --> RouterProvider["🔀 &lt;RouterProvider router={router} /&gt;<br/>(React Router v7)"]
+    end
 
-    %% SPA Navigation
-    LoginPage -.->|&lt;Link to='/signup'&gt;<br/>Client-side SPA Navigation| SignupPage
-    SignupPage -.->|&lt;Link to='/login'&gt;<br/>Client-side SPA Navigation| LoginPage
-    WorkspacesPage -.->|&lt;Link to='/login'&gt;| LoginPage
-    NotFoundPage -.->|&lt;Link to='/'&gt;| Redirect
+    %% Router Layer
+    subgraph RoutingLayer ["3. Routing Engine (src/app/router.tsx)"]
+        RouterProvider --> Router["🛣️ createBrowserRouter(...)"]
+        
+        %% Public Routes
+        Router -->|Path: '/'| Redirect["↪️ &lt;Navigate to='/login' replace /&gt;"]
+        Router -->|Path: '/login'| LoginPage["📄 src/pages/LoginPage.tsx"]
+        Router -->|Path: '/signup'| SignupPage["📄 src/pages/SignupPage.tsx"]
+        Router -->|Path: '*'| NotFoundPage["⚠️ src/pages/NotFoundPage.tsx (404)"]
+
+        %% Protected Routes
+        Router -->|Protected Subtree| ProtectedRoute["🛡️ src/features/auth/components/ProtectedRoute.tsx<br/>(Checks isAuthenticated &amp; isLoading)"]
+        ProtectedRoute -->|Auth OK &lt;Outlet /&gt;| WorkspacesPage["📄 src/pages/WorkspacesPage.tsx"]
+        ProtectedRoute -->|Auth OK &lt;Outlet /&gt;| WorkspaceDetailPage["📄 src/pages/WorkspaceDetailPage.tsx"]
+        ProtectedRoute -->|Auth OK &lt;Outlet /&gt;| ChannelDetailPage["📄 src/pages/ChannelDetailPage.tsx"]
+        ProtectedRoute -.->|Not Authenticated| RedirectLogin["↪️ &lt;Navigate to='/login' /&gt;"]
+    end
+
+    %% Component & Layout Layer
+    subgraph ComponentsLayer ["4. Feature & Layout Components"]
+        LoginPage --> AuthLayout["🧱 src/shared/layouts/AuthLayout<br/>(Glassmorphic Card &amp; Header)"]
+        SignupPage --> AuthLayout
+        
+        LoginPage --> LoginForm["📝 LoginForm.tsx"]
+        SignupPage --> SignupForm["📝 SignupForm.tsx"]
+
+        WorkspacesPage --> WorkspaceList["📋 WorkspaceList.tsx"]
+        WorkspacesPage --> CreateWorkspaceForm["➕ CreateWorkspaceForm.tsx"]
+
+        WorkspaceDetailPage --> WorkspaceDetail["🏢 WorkspaceDetail.tsx"]
+        WorkspaceDetailPage --> CreateChannelForm["➕ CreateChannelForm.tsx"]
+
+        ChannelDetailPage --> ChannelShell["💬 ChannelShell.tsx"]
+    end
+
+    %% Shared API & Services
+    subgraph ApiLayer ["5. Shared API & Network Layer"]
+        LoginForm -.->|login| AuthApi["src/features/auth/api.ts"]
+        SignupForm -.->|signup| AuthApi
+        WorkspaceList -.->|fetchWorkspaces| WorkspacesApi["src/features/workspaces/api.ts"]
+        CreateWorkspaceForm -.->|createWorkspace| WorkspacesApi
+        CreateChannelForm -.->|createChannel| ChannelsApi["src/features/channels/api.ts"]
+
+        AuthApi --> ApiClient["🌐 src/shared/api/client.ts<br/>(Fetch wrapper + Bearer token interceptor)"]
+        WorkspacesApi --> ApiClient
+        ChannelsApi --> ApiClient
+    end
 ```
 
 ---
 
-## Detailed Component & Route Breakdown
+## 2. Layer-by-Layer Overview
 
-### 1. Bootstrapping Layer
-- **`index.html`**: The HTML entry document containing `<div id="root"></div>`.
-- **`src/main.tsx`**: Bootstraps React via `createRoot` inside `StrictMode` and applies `index.css`.
-- **`src/index.css`**: Defines CSS design tokens (`--bg-app`, `--color-primary`, `--border-subtle`, glassmorphic variables, dark mode styling, and resets).
+### Layer 1: Bootstrapping
+- **`index.html`**: The single HTML page downloaded by the browser. Contains `<div id="root"></div>` where React takes control.
+- **`src/main.tsx`**: The JavaScript/TypeScript starting file. Uses React 19's `createRoot()` to mount `<App />` into the DOM.
+- **`src/index.css`**: Global design system variables (colors, borders, gradients, glassmorphism) and CSS reset.
 
-### 2. Application Shell & Routing Layer
-- **`src/App.tsx`**: Mounts `<RouterProvider router={router} />`.
-- **`src/routes/index.tsx`**: Instantiates `createBrowserRouter` defining route paths:
-  - **`/`**: Default root redirect pointing to `/login` (will evaluate authentication state once token persistence is attached in S6-08/S6-11).
-  - **`/login`**: Renders `LoginPage`.
-  - **`/signup`**: Renders `SignupPage`.
-  - **`/workspaces`**: Renders `WorkspacesPage`.
-  - **`*`**: Catch-all path rendering `NotFoundPage`.
+### Layer 2: State Providers & App Shell
+- **`src/app/App.tsx`**: Composes high-level context providers.
+- **`AuthProvider` (`src/features/auth/AuthProvider.tsx`)**: Wraps the whole app so any component can access the logged-in user, authentication status, and login/logout handlers via the `useAuth()` hook.
+- **`RouterProvider`**: Connects React Router to render views based on the current URL.
 
-### 3. Reusable UI Components Layer
-- **`src/components/AuthLayout/AuthLayout.tsx`**:
-  - Reusable layout shell shared by `LoginPage` and `SignupPage`.
-  - Renders the brand logo badge, title, subtitle, form slot (`children`), and footer navigation slot (`footer`).
-  - Styled with **`AuthLayout.module.css`** (zero duplicate CSS across auth pages).
+### Layer 3: Routing Engine
+- **`src/app/router.tsx`**:
+  - **Public routes**: `/login`, `/signup`, and default `/` redirect.
+  - **Protected routes**: Enclosed in `<ProtectedRoute />`. If a user is not authenticated, they get redirected to `/login`.
+  - **Fallbacks**: Any undefined URL matches `*` to show `NotFoundPage`.
 
-### 4. Pages Layer
-- **`LoginPage` (`src/pages/LoginPage.tsx`)**:
-  - Form with email and password inputs.
-  - Client-side navigation link to `/signup`.
-  - Ready for `POST /auth/login` integration (S6-10).
-- **`SignupPage` (`src/pages/SignupPage.tsx`)**:
-  - Form with email and password (minimum 8 characters) inputs.
-  - Client-side navigation link to `/login`.
-  - Ready for `POST /auth/signup` integration (S6-09).
-- **`WorkspacesPage` (`src/pages/WorkspacesPage.tsx`)**:
-  - Workspace list placeholder ready for `GET /workspaces` integration (S6-14/S6-16).
-- **`NotFoundPage` (`src/pages/NotFoundPage.tsx`)**:
-  - 404 page with navigation button back to `/`.
+### Layer 4: Feature Components & Layouts
+- **Feature-driven folders (`src/features/`)**:
+  - `auth`: `LoginForm`, `SignupForm`, `ProtectedRoute`, `useAuth`, `AuthProvider`.
+  - `workspaces`: `WorkspaceList`, `CreateWorkspaceForm`, `WorkspaceDetail`.
+  - `channels`: `ChannelShell`, `CreateChannelForm`.
+- **Reusable Layouts (`src/shared/layouts/`)**: Shared shells like `AuthLayout`.
+
+### Layer 5: Data & API Client
+- **`src/shared/api/client.ts`**: Standardized HTTP client wrapping browser `fetch`. Automatically attaches authorization tokens from `AuthProvider` and normalizes API error responses.
