@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ApiError } from "../../../shared/api";
-import { getChannel } from "../api";
-import type { Channel } from "../types";
+import { getChannel, getChannelMembers } from "../api";
+import type { Channel, ChannelMember } from "../types";
 import styles from "./ChannelShell.module.css";
 
 interface ChannelShellProps {
@@ -10,6 +10,7 @@ interface ChannelShellProps {
 
 export function ChannelShell({ channelId }: ChannelShellProps) {
   const [channel, setChannel] = useState<Channel | null>(null);
+  const [members, setMembers] = useState<ChannelMember[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -21,9 +22,13 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
       setError(null);
 
       try {
-        const result = await getChannel(channelId);
+        const [channelResult, membersResult] = await Promise.all([
+          getChannel(channelId),
+          getChannelMembers(channelId),
+        ]);
         if (isMounted) {
-          setChannel(result);
+          setChannel(channelResult);
+          setMembers(membersResult);
         }
       } catch (loadError) {
         if (isMounted) {
@@ -63,10 +68,24 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
     <section className={styles.shell}>
       <p className={styles.eyebrow}>Channel</p>
       <h1>{channel.name}</h1>
-      <p className={styles.status}>
-        This channel is ready for files, chat, and bot features in future
-        sprints.
-      </p>
+      <div className={styles.section}>
+        <h2>Members</h2>
+
+        {members.length === 0 ? (
+          <p className={styles.status}>No members found for this channel.</p>
+        ) : (
+          <ul className={styles.memberList}>
+            {members.map((member) => (
+              <li key={member.id} className={styles.memberItem}>
+                <div>
+                  <p className={styles.memberEmail}>{member.email}</p>
+                </div>
+                <span className={styles.roleBadge}>{member.role}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </section>
   );
 }
