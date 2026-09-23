@@ -14,3 +14,15 @@ export interface ChannelMember {
   channel_id: string;
   role: ChannelMemberRole;
 }
+
+export interface AddChannelMemberInput {
+  email: string;
+  role: ChannelMemberRole;
+}
+
+export interface MembershipResponse {
+  id: string;
+  user_id: string;
+  channel_id: string;
+  role: ChannelMemberRole;
+}

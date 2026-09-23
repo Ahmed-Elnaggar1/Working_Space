@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getChannelMembers } from "./api";
+import { addChannelMember, getChannelMembers } from "./api";
 import { setTokenProvider } from "../../shared/api";
 
 describe("channel member API", () => {
@@ -46,6 +46,40 @@ describe("channel member API", () => {
       expect.objectContaining({
         method: "GET",
         credentials: "include",
+      }),
+    );
+  });
+
+  it("posts an email-based member invite with the member role", async () => {
+    const membership = {
+      id: "membership-1",
+      user_id: "user-2",
+      channel_id: "channel-1",
+      role: "member",
+    };
+
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(membership), {
+        status: 201,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await expect(
+      addChannelMember("channel-1", {
+        email: "member@example.com",
+        role: "member",
+      }),
+    ).resolves.toEqual(membership);
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "http://localhost:8000/channels/channel-1/members",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          email: "member@example.com",
+          role: "member",
+        }),
       }),
     );
   });
