@@ -12,16 +12,24 @@ async def add_member(
     db: AsyncSession,
     *,
     channel_id: UUID,
-    user_id: UUID,
+    user_id: UUID | None = None,
+    email: str | None = None,
     role: Role,
 ) -> Membership:
-    user = await db.scalar(select(User).where(User.id == user_id))
+    if user_id is None:
+        if email is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User ID or email is required")
+        user = await db.scalar(select(User).where(User.email == email.lower()))
+    else:
+        user = await db.scalar(select(User).where(User.id == user_id))
+
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
+    target_user_id = user.id
     existing_membership = await db.scalar(
         select(Membership).where(
-            Membership.user_id == user_id,
+            Membership.user_id == target_user_id,
             Membership.channel_id == channel_id,
         )
     )
@@ -31,7 +39,7 @@ async def add_member(
             detail="User is already a member of this channel",
         )
 
-    membership = Membership(user_id=user_id, channel_id=channel_id, role=role.value)
+    membership = Membership(user_id=target_user_id, channel_id=channel_id, role=role.value)
     db.add(membership)
     try:
         await db.commit()

@@ -158,6 +158,29 @@ def test_non_member_cannot_list_channel_members(client: TestClient) -> None:
     assert response.status_code == 404
 
 
+def test_add_channel_member_by_email_success(client: TestClient) -> None:
+    workspace_id = create_workspace(client)
+    created = client.post(f"/workspaces/{workspace_id}/channels", json={"name": "Backend"})
+    channel_id = created.json()["id"]
+
+    new_user_id = uuid4()
+    with app.state.test_session_factory() as session:
+        from app.models import User
+        new_user = User(id=new_user_id, email="newuser@example.com", password_hash="dummy")
+        session.add(new_user)
+        session.commit()
+
+    response = client.post(
+        f"/channels/{channel_id}/members",
+        json={"email": "newuser@example.com", "role": "member"},
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["user_id"] == str(new_user_id)
+    assert body["channel_id"] == channel_id
+    assert body["role"] == "member"
+
+
 def test_add_channel_member_success(client: TestClient) -> None:
     workspace_id = create_workspace(client)
     created = client.post(f"/workspaces/{workspace_id}/channels", json={"name": "Backend"})
@@ -183,6 +206,22 @@ def test_add_channel_member_success(client: TestClient) -> None:
     assert body["role"] == "member"
 
 
+def test_unknown_channel_member_email_returns_not_found(client: TestClient) -> None:
+    workspace_id = create_workspace(client)
+    created = client.post(f"/workspaces/{workspace_id}/channels", json={"name": "Backend"})
+    channel_id = created.json()["id"]
+
+    response = client.post(
+        f"/channels/{channel_id}/members",
+        json={"email": "missing@example.com", "role": "member"},
+    )
+
+    assert response.status_code == 404
+    payload = response.json()
+    assert payload["error"]["code"] == "NOT_FOUND"
+    assert payload["error"]["message"] == "User not found"
+
+
 def test_duplicate_channel_member_returns_conflict(client: TestClient) -> None:
     workspace_id = create_workspace(client)
     created = client.post(f"/workspaces/{workspace_id}/channels", json={"name": "Backend"})
@@ -196,6 +235,26 @@ def test_duplicate_channel_member_returns_conflict(client: TestClient) -> None:
         session.commit()
 
     payload = {"user_id": str(member_id), "role": "member"}
+    first = client.post(f"/channels/{channel_id}/members", json=payload)
+    second = client.post(f"/channels/{channel_id}/members", json=payload)
+
+    assert first.status_code == 201
+    assert second.status_code == 409
+
+
+def test_duplicate_channel_member_by_email_returns_conflict(client: TestClient) -> None:
+    workspace_id = create_workspace(client)
+    created = client.post(f"/workspaces/{workspace_id}/channels", json={"name": "Backend"})
+    channel_id = created.json()["id"]
+    member_id = uuid4()
+
+    with app.state.test_session_factory() as session:
+        from app.models import User
+
+        session.add(User(id=member_id, email="duplicate@example.com", password_hash="dummy"))
+        session.commit()
+
+    payload = {"email": "duplicate@example.com", "role": "member"}
     first = client.post(f"/channels/{channel_id}/members", json=payload)
     second = client.post(f"/channels/{channel_id}/members", json=payload)
 

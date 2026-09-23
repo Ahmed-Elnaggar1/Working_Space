@@ -138,6 +138,7 @@ async def add_channel_member(
         db,
         channel_id=channel_id,
         user_id=payload.user_id,
+        email=payload.email,
         role=payload.role,
     )
 

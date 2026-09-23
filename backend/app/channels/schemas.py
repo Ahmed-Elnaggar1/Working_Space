@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_serializer, model_validator
 from app.models import Role
 
 
@@ -25,8 +25,17 @@ class ChannelResponse(BaseModel):
 
 
 class MembershipCreate(BaseModel):
-    user_id: UUID
+    user_id: UUID | None = None
+    email: EmailStr | None = None
     role: Role
+
+    @model_validator(mode="after")
+    def validate_identity(self):
+        has_user_id = self.user_id is not None
+        has_email = self.email is not None
+        if has_user_id == has_email:
+            raise ValueError("Provide exactly one of user_id or email")
+        return self
 
 
 class MembershipUpdate(BaseModel):

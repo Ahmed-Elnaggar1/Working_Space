@@ -135,10 +135,12 @@ Response `200`:
 Request:
 
 ```json
-{ "user_id": "uuid", "role": "member" }
+{ "email": "member@example.com", "role": "member" }
 ```
 
-Requires `owner` or `admin`.
+The server resolves the email to the matching user account. The endpoint also accepts the legacy `user_id` form for compatibility, but the canonical contract is email-based. Requires `owner` or `admin`.
+
+Returns `404 Not Found` if no account exists for that email, and `409 Conflict` if the user is already a member of the channel.
 
 ### `PATCH /channels/{channel_id}/members/{user_id}`
 
