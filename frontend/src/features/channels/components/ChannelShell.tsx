@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { ApiError } from "../../../shared/api";
 import { useAuth } from "../../auth/useAuth";
-import { getChannel, getChannelMembers } from "../api";
-import type { Channel, ChannelMember } from "../types";
+import { getChannel, getChannelMembers, updateChannelMemberRole } from "../api";
+import type { Channel, ChannelMember, ChannelMemberRole } from "../types";
 import { InviteMemberForm } from "./InviteMemberForm";
 import styles from "./ChannelShell.module.css";
 
@@ -16,6 +16,8 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
   const [members, setMembers] = useState<ChannelMember[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [roleError, setRoleError] = useState<string | null>(null);
+  const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -60,6 +62,24 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
     setMembers(result);
   }
 
+  async function handleRoleChange(userId: string, role: ChannelMemberRole) {
+    setRoleError(null);
+    setUpdatingMemberId(userId);
+
+    try {
+      await updateChannelMemberRole(channelId, userId, { role });
+      await refreshMembers();
+    } catch (roleChangeError) {
+      setRoleError(
+        roleChangeError instanceof ApiError
+          ? roleChangeError.message
+          : "Unable to update this member's role. Please try again.",
+      );
+    } finally {
+      setUpdatingMemberId(null);
+    }
+  }
+
   if (isLoading) {
     return <p className={styles.status}>Loading channel...</p>;
   }
@@ -73,7 +93,7 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
   }
 
   const currentMember = members.find((member) => member.user_id === user?.id);
-  const canInvite =
+  const canManageMembers =
     currentMember?.role === "owner" || currentMember?.role === "admin";
 
   return (
@@ -83,9 +103,11 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
       <div className={styles.section}>
         <h2>Members</h2>
 
-        {canInvite && (
+        {canManageMembers && (
           <InviteMemberForm channelId={channelId} onInvited={refreshMembers} />
         )}
+
+        {roleError && <p className={styles.error}>{roleError}</p>}
 
         {members.length === 0 ? (
           <p className={styles.status}>No members found for this channel.</p>
@@ -96,7 +118,27 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
                 <div>
                   <p className={styles.memberEmail}>{member.email}</p>
                 </div>
-                <span className={styles.roleBadge}>{member.role}</span>
+                {canManageMembers ? (
+                  <select
+                    className={styles.roleSelect}
+                    value={member.role}
+                    aria-label={`Role for ${member.email}`}
+                    disabled={updatingMemberId === member.user_id}
+                    onChange={(event) =>
+                      void handleRoleChange(
+                        member.user_id,
+                        event.target.value as ChannelMemberRole,
+                      )
+                    }
+                  >
+                    <option value="owner">Owner</option>
+                    <option value="admin">Admin</option>
+                    <option value="member">Member</option>
+                    <option value="read_only">Read only</option>
+                  </select>
+                ) : (
+                  <span className={styles.roleBadge}>{member.role}</span>
+                )}
               </li>
             ))}
           </ul>

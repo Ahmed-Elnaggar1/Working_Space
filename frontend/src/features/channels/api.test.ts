@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { addChannelMember, getChannelMembers } from "./api";
+import {
+  addChannelMember,
+  getChannelMembers,
+  updateChannelMemberRole,
+} from "./api";
 import { setTokenProvider } from "../../shared/api";
 
 describe("channel member API", () => {
@@ -80,6 +84,34 @@ describe("channel member API", () => {
           email: "member@example.com",
           role: "member",
         }),
+      }),
+    );
+  });
+
+  it("patches a channel member role", async () => {
+    const membership = {
+      id: "membership-1",
+      user_id: "user-2",
+      channel_id: "channel-1",
+      role: "admin",
+    };
+
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(membership), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await expect(
+      updateChannelMemberRole("channel-1", "user-2", { role: "admin" }),
+    ).resolves.toEqual(membership);
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "http://localhost:8000/channels/channel-1/members/user-2",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ role: "admin" }),
       }),
     );
   });

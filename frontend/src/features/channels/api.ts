@@ -4,6 +4,7 @@ import type {
   Channel,
   ChannelMember,
   MembershipResponse,
+  UpdateChannelMemberInput,
 } from "./types";
 
 export function getChannel(channelId: string): Promise<Channel> {
@@ -19,4 +20,15 @@ export function addChannelMember(
   input: AddChannelMemberInput,
 ): Promise<MembershipResponse> {
   return api.post<MembershipResponse>(`/channels/${channelId}/members`, input);
+}
+
+export function updateChannelMemberRole(
+  channelId: string,
+  userId: string,
+  input: UpdateChannelMemberInput,
+): Promise<MembershipResponse> {
+  return api.patch<MembershipResponse>(
+    `/channels/${channelId}/members/${userId}`,
+    input,
+  );
 }

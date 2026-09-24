@@ -74,3 +74,19 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+
+.roleSelect {
+  min-width: 7rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.875rem;
+}
+
+.roleSelect:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}

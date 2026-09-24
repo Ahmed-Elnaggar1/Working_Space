@@ -26,3 +26,7 @@ export interface MembershipResponse {
   channel_id: string;
   role: ChannelMemberRole;
 }
+
+export interface UpdateChannelMemberInput {
+  role: ChannelMemberRole;
+}
