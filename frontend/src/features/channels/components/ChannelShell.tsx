@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 import { ApiError } from "../../../shared/api";
 import { useAuth } from "../../auth/useAuth";
-import { getChannel, getChannelMembers, updateChannelMemberRole } from "../api";
+import {
+  getChannel,
+  getChannelMembers,
+  removeChannelMember,
+  updateChannelMemberRole,
+} from "../api";
 import type { Channel, ChannelMember, ChannelMemberRole } from "../types";
 import { InviteMemberForm } from "./InviteMemberForm";
 import styles from "./ChannelShell.module.css";
@@ -17,7 +22,9 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [roleError, setRoleError] = useState<string | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
   const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null);
+  const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -80,6 +87,35 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
     }
   }
 
+  async function handleRemoveMember(userId: string, email: string) {
+    if (!window.confirm(`Remove ${email} from this channel?`)) {
+      return;
+    }
+
+    setRemoveError(null);
+    setRemovingMemberId(userId);
+
+    try {
+      await removeChannelMember(channelId, userId);
+      await refreshMembers();
+    } catch (removeMemberError) {
+      if (
+        removeMemberError instanceof ApiError &&
+        removeMemberError.status === 409
+      ) {
+        setRemoveError("A channel must retain at least one owner.");
+      } else {
+        setRemoveError(
+          removeMemberError instanceof ApiError
+            ? removeMemberError.message
+            : "Unable to remove this member. Please try again.",
+        );
+      }
+    } finally {
+      setRemovingMemberId(null);
+    }
+  }
+
   if (isLoading) {
     return <p className={styles.status}>Loading channel...</p>;
   }
@@ -108,6 +144,7 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
         )}
 
         {roleError && <p className={styles.error}>{roleError}</p>}
+        {removeError && <p className={styles.error}>{removeError}</p>}
 
         {members.length === 0 ? (
           <p className={styles.status}>No members found for this channel.</p>
@@ -119,23 +156,43 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
                   <p className={styles.memberEmail}>{member.email}</p>
                 </div>
                 {canManageMembers ? (
-                  <select
-                    className={styles.roleSelect}
-                    value={member.role}
-                    aria-label={`Role for ${member.email}`}
-                    disabled={updatingMemberId === member.user_id}
-                    onChange={(event) =>
-                      void handleRoleChange(
-                        member.user_id,
-                        event.target.value as ChannelMemberRole,
-                      )
-                    }
-                  >
-                    <option value="owner">Owner</option>
-                    <option value="admin">Admin</option>
-                    <option value="member">Member</option>
-                    <option value="read_only">Read only</option>
-                  </select>
+                  <div className={styles.memberActions}>
+                    <select
+                      className={styles.roleSelect}
+                      value={member.role}
+                      aria-label={`Role for ${member.email}`}
+                      disabled={
+                        updatingMemberId === member.user_id ||
+                        removingMemberId === member.user_id
+                      }
+                      onChange={(event) =>
+                        void handleRoleChange(
+                          member.user_id,
+                          event.target.value as ChannelMemberRole,
+                        )
+                      }
+                    >
+                      <option value="owner">Owner</option>
+                      <option value="admin">Admin</option>
+                      <option value="member">Member</option>
+                      <option value="read_only">Read only</option>
+                    </select>
+                    <button
+                      className={styles.removeButton}
+                      type="button"
+                      disabled={
+                        updatingMemberId === member.user_id ||
+                        removingMemberId === member.user_id
+                      }
+                      onClick={() =>
+                        void handleRemoveMember(member.user_id, member.email)
+                      }
+                    >
+                      {removingMemberId === member.user_id
+                        ? "Removing..."
+                        : "Remove"}
+                    </button>
+                  </div>
                 ) : (
                   <span className={styles.roleBadge}>{member.role}</span>
                 )}

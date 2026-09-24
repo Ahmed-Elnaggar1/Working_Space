@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addChannelMember,
   getChannelMembers,
+  removeChannelMember,
   updateChannelMemberRole,
 } from "./api";
 import { setTokenProvider } from "../../shared/api";
@@ -112,6 +113,24 @@ describe("channel member API", () => {
       expect.objectContaining({
         method: "PATCH",
         body: JSON.stringify({ role: "admin" }),
+      }),
+    );
+  });
+
+  it("deletes a channel member", async () => {
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 204 }));
+
+    await expect(
+      removeChannelMember("channel-1", "user-2"),
+    ).resolves.toBeNull();
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "http://localhost:8000/channels/channel-1/members/user-2",
+      expect.objectContaining({
+        method: "DELETE",
+        credentials: "include",
       }),
     );
   });

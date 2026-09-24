@@ -32,3 +32,10 @@ export function updateChannelMemberRole(
     input,
   );
 }
+
+export function removeChannelMember(
+  channelId: string,
+  userId: string,
+): Promise<null> {
+  return api.delete<null>(`/channels/${channelId}/members/${userId}`);
+}
