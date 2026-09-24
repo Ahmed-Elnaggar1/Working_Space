@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
-import { ApiError } from "../../../shared/api";
 import { addChannelMember } from "../api";
+import { getMemberActionErrorMessage } from "../memberManagement";
 import styles from "./InviteMemberForm.module.css";
 
 interface InviteMemberFormProps {
@@ -29,18 +29,7 @@ export function InviteMemberForm({
       setEmail("");
       setSuccess("Member invited successfully.");
     } catch (inviteError) {
-      if (inviteError instanceof ApiError && inviteError.status === 404) {
-        setError("No account exists with that email address.");
-      } else if (
-        inviteError instanceof ApiError &&
-        inviteError.status === 409
-      ) {
-        setError("That person is already a member of this channel.");
-      } else if (inviteError instanceof ApiError) {
-        setError(inviteError.message);
-      } else {
-        setError("Unable to invite this member. Please try again.");
-      }
+      setError(getMemberActionErrorMessage("invite", inviteError));
     } finally {
       setIsSubmitting(false);
     }

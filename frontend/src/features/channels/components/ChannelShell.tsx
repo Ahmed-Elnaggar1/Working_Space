@@ -7,6 +7,10 @@ import {
   removeChannelMember,
   updateChannelMemberRole,
 } from "../api";
+import {
+  canManageChannelMembers,
+  getMemberActionErrorMessage,
+} from "../memberManagement";
 import type { Channel, ChannelMember, ChannelMemberRole } from "../types";
 import { InviteMemberForm } from "./InviteMemberForm";
 import styles from "./ChannelShell.module.css";
@@ -77,11 +81,7 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
       await updateChannelMemberRole(channelId, userId, { role });
       await refreshMembers();
     } catch (roleChangeError) {
-      setRoleError(
-        roleChangeError instanceof ApiError
-          ? roleChangeError.message
-          : "Unable to update this member's role. Please try again.",
-      );
+      setRoleError(getMemberActionErrorMessage("change_role", roleChangeError));
     } finally {
       setUpdatingMemberId(null);
     }
@@ -99,18 +99,7 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
       await removeChannelMember(channelId, userId);
       await refreshMembers();
     } catch (removeMemberError) {
-      if (
-        removeMemberError instanceof ApiError &&
-        removeMemberError.status === 409
-      ) {
-        setRemoveError("A channel must retain at least one owner.");
-      } else {
-        setRemoveError(
-          removeMemberError instanceof ApiError
-            ? removeMemberError.message
-            : "Unable to remove this member. Please try again.",
-        );
-      }
+      setRemoveError(getMemberActionErrorMessage("remove", removeMemberError));
     } finally {
       setRemovingMemberId(null);
     }
@@ -129,8 +118,7 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
   }
 
   const currentMember = members.find((member) => member.user_id === user?.id);
-  const canManageMembers =
-    currentMember?.role === "owner" || currentMember?.role === "admin";
+  const canManageMembers = canManageChannelMembers(currentMember?.role);
 
   return (
     <section className={styles.shell}>
