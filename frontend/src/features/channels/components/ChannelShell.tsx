@@ -3,15 +3,27 @@ import { ApiError } from "../../../shared/api";
 import { useAuth } from "../../auth/useAuth";
 import {
   getChannel,
+  getChannelFiles,
   getChannelMembers,
   removeChannelMember,
   updateChannelMemberRole,
 } from "../api";
 import {
+  hasActiveIngestion,
+  INGESTION_POLL_INTERVAL_MS,
+} from "../fileManagement";
+import {
   canManageChannelMembers,
   getMemberActionErrorMessage,
 } from "../memberManagement";
-import type { Channel, ChannelMember, ChannelMemberRole } from "../types";
+import type {
+  Channel,
+  ChannelFile,
+  ChannelMember,
+  ChannelMemberRole,
+} from "../types";
+import { FileList } from "./FileList";
+import { FileUploadForm } from "./FileUploadForm";
 import { InviteMemberForm } from "./InviteMemberForm";
 import styles from "./ChannelShell.module.css";
 
@@ -23,6 +35,7 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
   const { user } = useAuth();
   const [channel, setChannel] = useState<Channel | null>(null);
   const [members, setMembers] = useState<ChannelMember[]>([]);
+  const [files, setFiles] = useState<ChannelFile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [roleError, setRoleError] = useState<string | null>(null);
@@ -38,13 +51,15 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
       setError(null);
 
       try {
-        const [channelResult, membersResult] = await Promise.all([
+        const [channelResult, membersResult, filesResult] = await Promise.all([
           getChannel(channelId),
           getChannelMembers(channelId),
+          getChannelFiles(channelId),
         ]);
         if (isMounted) {
           setChannel(channelResult);
           setMembers(membersResult);
+          setFiles(filesResult);
         }
       } catch (loadError) {
         if (isMounted) {
@@ -68,9 +83,41 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
     };
   }, [channelId]);
 
+  // S7-06: Ingestion status polling while any file is pending or processing
+  useEffect(() => {
+    if (!hasActiveIngestion(files)) {
+      return;
+    }
+
+    const intervalId = setInterval(async () => {
+      try {
+        const latestFiles = await getChannelFiles(channelId);
+        setFiles(latestFiles);
+      } catch {
+        // Silently preserve current files on intermittent poll failure
+      }
+    }, INGESTION_POLL_INTERVAL_MS);
+
+    return () => clearInterval(intervalId);
+  }, [channelId, files]);
+
   async function refreshMembers() {
     const result = await getChannelMembers(channelId);
     setMembers(result);
+  }
+
+  function handleFileUploaded(newFile: ChannelFile) {
+    setFiles((prev) => [newFile, ...prev]);
+  }
+
+  function handleFileDeleted(fileId: string) {
+    setFiles((prev) => prev.filter((file) => file.id !== fileId));
+  }
+
+  function handleFileUpdated(updatedFile: ChannelFile) {
+    setFiles((prev) =>
+      prev.map((file) => (file.id === updatedFile.id ? updatedFile : file)),
+    );
   }
 
   async function handleRoleChange(userId: string, role: ChannelMemberRole) {
@@ -124,6 +171,25 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
     <section className={styles.shell}>
       <p className={styles.eyebrow}>Channel</p>
       <h1>{channel.name}</h1>
+
+      <div className={styles.section}>
+        <h2>Files</h2>
+        <FileUploadForm
+          channelId={channelId}
+          userRole={currentMember?.role}
+          onUploaded={handleFileUploaded}
+        />
+        <FileList
+          channelId={channelId}
+          files={files}
+          members={members}
+          currentUserId={user?.id}
+          currentUserRole={currentMember?.role}
+          onFileDeleted={handleFileDeleted}
+          onFileUpdated={handleFileUpdated}
+        />
+      </div>
+
       <div className={styles.section}>
         <h2>Members</h2>
 

@@ -30,3 +30,21 @@ export interface MembershipResponse {
 export interface UpdateChannelMemberInput {
   role: ChannelMemberRole;
 }
+
+export type ChannelFileIngestionStatus =
+  | "pending"
+  | "processing"
+  | "completed"
+  | "failed";
+
+export interface ChannelFile {
+  id: string;
+  channel_id: string;
+  filename: string;
+  file_name?: string;
+  storage_path: string;
+  uploaded_by: string;
+  ingestion_status: ChannelFileIngestionStatus;
+  ingestion_error?: string | null;
+  created_at: string;
+}
