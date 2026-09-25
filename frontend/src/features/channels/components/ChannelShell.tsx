@@ -22,6 +22,7 @@ import type {
   ChannelMember,
   ChannelMemberRole,
 } from "../types";
+import { BotAskPanel } from "./BotAskPanel";
 import { FileList } from "./FileList";
 import { FileUploadForm } from "./FileUploadForm";
 import { InviteMemberForm } from "./InviteMemberForm";
@@ -188,6 +189,10 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
           onFileDeleted={handleFileDeleted}
           onFileUpdated={handleFileUpdated}
         />
+      </div>
+
+      <div className={styles.section}>
+        <BotAskPanel key={channelId} channelId={channelId} />
       </div>
 
       <div className={styles.section}>

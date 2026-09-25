@@ -48,3 +48,37 @@ export interface ChannelFile {
   ingestion_error?: string | null;
   created_at: string;
 }
+
+export interface BotCitation {
+  file_id: string;
+  file_name: string;
+  page: number | null;
+}
+
+export interface AskChannelRequest {
+  question: string;
+}
+
+export interface AskChannelResponse {
+  answer: string;
+  citations: BotCitation[];
+  insufficient_evidence: boolean;
+}
+
+export type BotQAPairStatus =
+  | "loading"
+  | "success"
+  | "insufficient_evidence"
+  | "error";
+
+export interface BotQAPair {
+  id: string;
+  question: string;
+  answer?: string;
+  citations?: BotCitation[];
+  insufficient_evidence?: boolean;
+  status: BotQAPairStatus;
+  errorMessage?: string;
+  isRetryable?: boolean;
+  createdAt: string;
+}

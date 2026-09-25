@@ -1,6 +1,7 @@
 import { api, getBaseUrl, getTokenProvider, parseApiError } from "../../shared/api";
 import type {
   AddChannelMemberInput,
+  AskChannelResponse,
   Channel,
   ChannelFile,
   ChannelMember,
@@ -107,4 +108,13 @@ export function deleteChannelFile(
   fileId: string,
 ): Promise<null> {
   return api.delete<null>(`/channels/${channelId}/files/${fileId}`);
+}
+
+export function askChannel(
+  channelId: string,
+  question: string,
+): Promise<AskChannelResponse> {
+  return api.post<AskChannelResponse>(`/channels/${channelId}/ask`, {
+    question,
+  });
 }

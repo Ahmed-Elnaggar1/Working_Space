@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addChannelMember,
+  askChannel,
   deleteChannelFile,
   downloadChannelFile,
   getChannelFiles,
@@ -10,7 +11,7 @@ import {
   updateChannelMemberRole,
   uploadChannelFile,
 } from "./api";
-import { setTokenProvider } from "../../shared/api";
+import { ApiError, setTokenProvider } from "../../shared/api";
 
 describe("channel member API", () => {
   const originalFetch = globalThis.fetch;
@@ -315,3 +316,112 @@ describe("channel files API", () => {
     );
   });
 });
+
+describe("askChannel API", () => {
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    setTokenProvider(null);
+    vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("submits question and returns answer with citations", async () => {
+    const mockResponse = {
+      answer: "The project deadline is October 15th.",
+      citations: [
+        {
+          file_id: "file-123",
+          file_name: "plan.pdf",
+          page: 3,
+        },
+      ],
+      insufficient_evidence: false,
+    };
+
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(mockResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const result = await askChannel(
+      "channel-1",
+      "What is the project deadline?",
+    );
+
+    expect(result).toEqual(mockResponse);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "http://localhost:8000/channels/channel-1/ask",
+      expect.objectContaining({
+        method: "POST",
+        credentials: "include",
+        body: JSON.stringify({ question: "What is the project deadline?" }),
+      }),
+    );
+  });
+
+  it("handles insufficient_evidence response shape", async () => {
+    const mockResponse = {
+      answer: "Insufficient evidence in this channel to answer the question.",
+      citations: [],
+      insufficient_evidence: true,
+    };
+
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(mockResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const result = await askChannel("channel-1", "What is the secret code?");
+    expect(result.insufficient_evidence).toBe(true);
+    expect(result.citations).toEqual([]);
+  });
+
+  it("propagates 504 Gateway Timeout as an ApiError", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: {
+            code: "GATEWAY_TIMEOUT",
+            message: "Claude API request timed out.",
+          },
+        }),
+        {
+          status: 504,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    await expect(
+      askChannel("channel-1", "A very complex question"),
+    ).rejects.toThrow(ApiError);
+  });
+
+  it("propagates 502 Bad Gateway as an ApiError", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: {
+            code: "BAD_GATEWAY",
+            message: "LLM service error.",
+          },
+        }),
+        {
+          status: 502,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    await expect(askChannel("channel-1", "Question")).rejects.toThrow(ApiError);
+  });
+});
+
