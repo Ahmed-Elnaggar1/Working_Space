@@ -174,9 +174,23 @@ Retries the ingestion process for a failed file. Requires upload files permissio
 
 ### `GET /channels/{channel_id}/messages`
 
-Returns paginated messages ordered by `created_at` ascending. Pagination uses
-`limit` (1-100, default 50) and `offset` (default 0) query parameters. Message
-content is required and limited to 4000 characters.
+Returns a page of messages ordered by `created_at` ascending. Pagination uses
+`limit` (1-100, default 50) and an optional opaque `before` cursor. The initial
+request returns the newest page; pass the response's `next_cursor` as `before`
+to load older messages without offset drift while new messages arrive.
+
+Response:
+
+```json
+{
+  "items": [
+    { "id": "uuid", "content": "Message text", "created_at": "timestamp" }
+  ],
+  "next_cursor": "opaque-cursor-or-null"
+}
+```
+
+Message content is required and limited to 4000 characters.
 
 ### `POST /channels/{channel_id}/messages`
 
@@ -188,7 +202,9 @@ Requires send-message permission.
 
 Requires authentication and channel membership during connection establishment.
 Clients authenticate with `?token=<access_token>` (an `Authorization: Bearer`
-header is also accepted). Each received JSON message has the shape
+header is also accepted). The token is decoded and its expiry is checked during
+the handshake; missing, invalid, or expired credentials are rejected with
+WebSocket close code `1008`. Each received JSON message has the shape
 `{"content":"Message text"}`. Every message is validated against the sender's
 current membership and role; a role change takes effect on the next message,
 and membership removal closes the connection with WebSocket close code 1008.

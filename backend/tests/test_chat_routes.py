@@ -2,8 +2,9 @@ from collections.abc import Generator
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
-import pytest
 from fastapi.testclient import TestClient
+from jose import jwt
+import pytest
 from starlette.websockets import WebSocketDisconnect
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.exc import IntegrityError
@@ -11,7 +12,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.auth.dependencies import CurrentUser, DEV_USER_ID, get_current_user
-from app.auth.security import create_access_token
+from app.auth.security import JWT_ACCESS_SECRET, JWT_ALGORITHM, create_access_token
 from app.core import Base, get_db
 from app.main import app
 from app.models import Channel, Membership, Message, Role, User
@@ -217,8 +218,8 @@ def test_s5_03_get_messages_all_roles(client: TestClient) -> None:
         res = client.get(f"/channels/{channel_id}/messages")
         assert res.status_code == 200, f"Role {role.value} could not view messages: {res.status_code}"
         body = res.json()
-        assert len(body) == 1
-        assert body[0]["content"] == "Message 1"
+        assert len(body["items"]) == 1
+        assert body["items"][0]["content"] == "Message 1"
 
 
 def test_s5_03_get_messages_non_member_denial(client: TestClient) -> None:
@@ -255,33 +256,39 @@ def test_s5_03_get_messages_pagination_and_ordering(client: TestClient) -> None:
             session.add(msg)
         session.commit()
 
-    # Default pagination (limit=50, offset=0)
+    # Default pagination returns the newest page in ascending display order.
     res = client.get(f"/channels/{channel_id}/messages")
     assert res.status_code == 200
-    items = res.json()
-    assert len(items) == 5
-    assert [m["content"] for m in items] == [f"Message {i}" for i in range(5)]
+    first_page = res.json()
+    assert len(first_page["items"]) == 5
+    assert [m["content"] for m in first_page["items"]] == [f"Message {i}" for i in range(5)]
+    assert first_page["next_cursor"] is None
 
-    # Limit=2, offset=0
-    res = client.get(f"/channels/{channel_id}/messages?limit=2&offset=0")
+    # Limit=2 starts at the newest messages, while preserving display order.
+    res = client.get(f"/channels/{channel_id}/messages?limit=2")
     assert res.status_code == 200
     page1 = res.json()
-    assert len(page1) == 2
-    assert [m["content"] for m in page1] == ["Message 0", "Message 1"]
+    assert len(page1["items"]) == 2
+    assert [m["content"] for m in page1["items"]] == ["Message 3", "Message 4"]
+    assert page1["next_cursor"]
 
-    # Limit=2, offset=2
-    res = client.get(f"/channels/{channel_id}/messages?limit=2&offset=2")
+    # The cursor loads the older page without offset pagination.
+    res = client.get(f"/channels/{channel_id}/messages?limit=2&before={page1['next_cursor']}")
     assert res.status_code == 200
     page2 = res.json()
-    assert len(page2) == 2
-    assert [m["content"] for m in page2] == ["Message 2", "Message 3"]
+    assert len(page2["items"]) == 2
+    assert [m["content"] for m in page2["items"]] == ["Message 1", "Message 2"]
+    assert page2["next_cursor"]
 
-    # Limit=2, offset=4
-    res = client.get(f"/channels/{channel_id}/messages?limit=2&offset=4")
+    res = client.get(f"/channels/{channel_id}/messages?limit=2&before={page2['next_cursor']}")
     assert res.status_code == 200
     page3 = res.json()
-    assert len(page3) == 1
-    assert [m["content"] for m in page3] == ["Message 4"]
+    assert len(page3["items"]) == 1
+    assert [m["content"] for m in page3["items"]] == ["Message 0"]
+    assert page3["next_cursor"] is None
+
+    res = client.get(f"/channels/{channel_id}/messages?before=not-a-cursor")
+    assert res.status_code == 400
 
 
 def test_s5_04_websocket_authentication_and_broadcast(client: TestClient) -> None:
@@ -302,7 +309,7 @@ def test_s5_04_websocket_authentication_and_broadcast(client: TestClient) -> Non
 
     app.dependency_overrides[get_current_user] = lambda: CurrentUser(id=DEV_USER_ID)
     history = client.get(f"/channels/{channel_id}/messages")
-    assert [message["content"] for message in history.json()] == ["Live message"]
+    assert [message["content"] for message in history.json()["items"]] == ["Live message"]
 
 
 def test_s5_04_websocket_rejects_invalid_token_and_non_member(client: TestClient) -> None:
@@ -315,6 +322,28 @@ def test_s5_04_websocket_rejects_invalid_token_and_non_member(client: TestClient
     for token in ["invalid-token", create_access_token(non_member_id)]:
         with pytest.raises(WebSocketDisconnect) as error:
             with client.websocket_connect(f"/ws/channels/{channel_id}?token={token}"):
+                pass
+        assert error.value.code == 1008
+
+
+def test_s8_01_websocket_rejects_missing_and_expired_token(client: TestClient) -> None:
+    channel_id = create_test_channel(client)
+    expired_token = jwt.encode(
+        {
+            "sub": str(DEV_USER_ID),
+            "type": "access",
+            "exp": datetime.now(timezone.utc) - timedelta(minutes=1),
+        },
+        JWT_ACCESS_SECRET,
+        algorithm=JWT_ALGORITHM,
+    )
+
+    for path in [
+        f"/ws/channels/{channel_id}",
+        f"/ws/channels/{channel_id}?token={expired_token}",
+    ]:
+        with pytest.raises(WebSocketDisconnect) as error:
+            with client.websocket_connect(path):
                 pass
         assert error.value.code == 1008
 
