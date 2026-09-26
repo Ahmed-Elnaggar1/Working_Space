@@ -6,6 +6,7 @@ import {
   downloadChannelFile,
   getChannelFiles,
   getChannelMembers,
+  getChannelWebSocketUrl,
   removeChannelMember,
   retryFileIngestion,
   updateChannelMemberRole,
@@ -142,6 +143,22 @@ describe("channel member API", () => {
   });
 });
 
+describe("channel websocket URL", () => {
+  it("builds a websocket URL with the bearer token and correct scheme", () => {
+    expect(getChannelWebSocketUrl("channel-1", "jwt-token")).toBe(
+      "ws://localhost:8000/ws/channels/channel-1?token=jwt-token",
+    );
+
+    expect(
+      getChannelWebSocketUrl(
+        "channel-1",
+        "jwt-token",
+        "https://api.example.com",
+      ),
+    ).toBe("wss://api.example.com/ws/channels/channel-1?token=jwt-token");
+  });
+});
+
 describe("channel files API", () => {
   const originalFetch = globalThis.fetch;
 
@@ -187,7 +204,9 @@ describe("channel files API", () => {
   });
 
   it("uploads a file using FormData", async () => {
-    const file = new File(["dummy content"], "report.txt", { type: "text/plain" });
+    const file = new File(["dummy content"], "report.txt", {
+      type: "text/plain",
+    });
     const uploadedRecord = {
       id: "file-2",
       channel_id: "channel-1",
@@ -206,7 +225,9 @@ describe("channel files API", () => {
       }),
     );
 
-    await expect(uploadChannelFile("channel-1", file)).resolves.toEqual(uploadedRecord);
+    await expect(uploadChannelFile("channel-1", file)).resolves.toEqual(
+      uploadedRecord,
+    );
 
     expect(globalThis.fetch).toHaveBeenCalledWith(
       "http://localhost:8000/channels/channel-1/files",
@@ -233,7 +254,9 @@ describe("channel files API", () => {
 
     const mockClick = vi.fn();
     const mockLink = { href: "", download: "", click: mockClick };
-    const mockCreateObjectURL = vi.fn().mockReturnValue("blob:http://localhost/test-uuid");
+    const mockCreateObjectURL = vi
+      .fn()
+      .mockReturnValue("blob:http://localhost/test-uuid");
     const mockRevokeObjectURL = vi.fn();
 
     const mockDocument = {
@@ -267,7 +290,9 @@ describe("channel files API", () => {
     );
     expect(mockCreateObjectURL).toHaveBeenCalled();
     expect(mockClick).toHaveBeenCalled();
-    expect(mockRevokeObjectURL).toHaveBeenCalledWith("blob:http://localhost/test-uuid");
+    expect(mockRevokeObjectURL).toHaveBeenCalledWith(
+      "blob:http://localhost/test-uuid",
+    );
     vi.unstubAllGlobals();
   });
 
@@ -290,7 +315,9 @@ describe("channel files API", () => {
       }),
     );
 
-    await expect(retryFileIngestion("channel-1", "file-3")).resolves.toEqual(retriedRecord);
+    await expect(retryFileIngestion("channel-1", "file-3")).resolves.toEqual(
+      retriedRecord,
+    );
 
     expect(globalThis.fetch).toHaveBeenCalledWith(
       "http://localhost:8000/channels/channel-1/files/file-3/retry-ingestion",

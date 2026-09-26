@@ -32,10 +32,7 @@ export interface UpdateChannelMemberInput {
 }
 
 export type ChannelFileIngestionStatus =
-  | "pending"
-  | "processing"
-  | "completed"
-  | "failed";
+  "pending" | "processing" | "completed" | "failed";
 
 export interface ChannelFile {
   id: string;
@@ -81,4 +78,17 @@ export interface BotQAPair {
   errorMessage?: string;
   isRetryable?: boolean;
   createdAt: string;
+}
+
+export interface ChannelMessage {
+  id: string;
+  channel_id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+}
+
+export interface ChannelMessagePage {
+  items: ChannelMessage[];
+  next_cursor: string | null;
 }

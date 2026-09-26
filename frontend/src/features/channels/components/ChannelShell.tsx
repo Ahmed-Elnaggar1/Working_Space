@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
-import { ApiError } from "../../../shared/api";
+import { useEffect, useRef, useState } from "react";
+import { ApiError, getTokenProvider } from "../../../shared/api";
 import { useAuth } from "../../auth/useAuth";
 import {
   getChannel,
   getChannelFiles,
   getChannelMembers,
+  getChannelWebSocketUrl,
   removeChannelMember,
   updateChannelMemberRole,
 } from "../api";
@@ -26,6 +27,7 @@ import { BotAskPanel } from "./BotAskPanel";
 import { FileList } from "./FileList";
 import { FileUploadForm } from "./FileUploadForm";
 import { InviteMemberForm } from "./InviteMemberForm";
+import { MessageHistory } from "./MessageHistory";
 import styles from "./ChannelShell.module.css";
 
 interface ChannelShellProps {
@@ -43,6 +45,56 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null);
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
+  const socketRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const tokenProvider = getTokenProvider();
+    const token = tokenProvider ? tokenProvider() : null;
+
+    if (!token) {
+      return;
+    }
+
+    let isUnmounted = false;
+
+    const connectSocket = () => {
+      if (isUnmounted) {
+        return;
+      }
+
+      const ws = new WebSocket(getChannelWebSocketUrl(channelId, token));
+      socketRef.current = ws;
+
+      ws.onopen = () => {
+        if (reconnectTimeoutRef.current !== null) {
+          window.clearTimeout(reconnectTimeoutRef.current);
+          reconnectTimeoutRef.current = null;
+        }
+      };
+
+      ws.onclose = () => {
+        if (!isUnmounted) {
+          reconnectTimeoutRef.current = window.setTimeout(() => {
+            connectSocket();
+          }, 1000);
+        }
+      };
+    };
+
+    connectSocket();
+
+    return () => {
+      isUnmounted = true;
+      if (socketRef.current) {
+        socketRef.current.close();
+        socketRef.current = null;
+      }
+      if (reconnectTimeoutRef.current !== null) {
+        window.clearTimeout(reconnectTimeoutRef.current);
+      }
+    };
+  }, [channelId]);
 
   useEffect(() => {
     let isMounted = true;
@@ -172,6 +224,15 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
     <section className={styles.shell}>
       <p className={styles.eyebrow}>Channel</p>
       <h1>{channel.name}</h1>
+
+      <div className={styles.section}>
+        <MessageHistory
+          key={channelId}
+          channelId={channelId}
+          members={members}
+          currentUserId={user?.id}
+        />
+      </div>
 
       <div className={styles.section}>
         <h2>Files</h2>

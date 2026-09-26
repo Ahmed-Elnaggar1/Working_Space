@@ -1,13 +1,17 @@
+import base64
+import binascii
+import json
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import CurrentUser, authenticate_access_token, get_current_user
 from app.chat.manager import connection_manager
-from app.chat.schemas import MessageCreate, MessageResponse
+from app.chat.schemas import MessageCreate, MessagePage, MessageResponse
 from app.chat.service import persist_message
 from app.core.db import get_db
 from app.models import Channel, Membership, Message
@@ -15,6 +19,26 @@ from app.permissions import require_role
 from app.permissions.dependencies import ROLE_PERMISSIONS
 
 router = APIRouter(tags=["chat"])
+
+
+def _encode_message_cursor(message: Message) -> str:
+    payload = {"created_at": message.created_at.isoformat(), "id": str(message.id)}
+    encoded = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode())
+    return encoded.decode().rstrip("=")
+
+
+def _decode_message_cursor(cursor: str) -> tuple[datetime, UUID]:
+    try:
+        padded_cursor = cursor + "=" * (-len(cursor) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded_cursor).decode())
+        created_at = datetime.fromisoformat(payload["created_at"])
+        message_id = UUID(payload["id"])
+    except (KeyError, TypeError, ValueError, UnicodeDecodeError, json.JSONDecodeError, binascii.Error) as error:
+        raise HTTPException(status_code=400, detail="Invalid message cursor") from error
+
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    return created_at, message_id
 
 
 @router.post(
@@ -106,23 +130,29 @@ async def channel_websocket(
 
 @router.get(
     "/channels/{channel_id}/messages",
-    response_model=list[MessageResponse],
+    response_model=MessagePage,
     dependencies=[Depends(require_role("view_messages"))],
 )
 async def get_messages(
     channel_id: UUID,
     limit: int = Query(default=50, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
+    before: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
-) -> list[Message]:
-    messages = (
-        (await db.scalars(
-            select(Message)
-            .where(Message.channel_id == channel_id)
-            .order_by(Message.created_at.asc(), Message.id.asc())
-            .offset(offset)
-            .limit(limit)
-        ))
-        .all()
-    )
-    return list(messages)
+) -> MessagePage:
+    query = select(Message).where(Message.channel_id == channel_id)
+    if before:
+        before_created_at, before_id = _decode_message_cursor(before)
+        query = query.where(
+            or_(
+                Message.created_at < before_created_at,
+                (Message.created_at == before_created_at) & (Message.id < before_id),
+            )
+        )
+
+    messages = list((await db.scalars(
+        query.order_by(Message.created_at.desc(), Message.id.desc()).limit(limit + 1)
+    )).all())
+    has_more = len(messages) > limit
+    messages = list(reversed(messages[:limit]))
+    next_cursor = _encode_message_cursor(messages[0]) if has_more else None
+    return MessagePage(items=messages, next_cursor=next_cursor)

@@ -22,3 +22,8 @@ class MessageResponse(BaseModel):
         if value.tzinfo is None:
             value = value.replace(tzinfo=timezone.utc)
         return value.astimezone(timezone.utc).isoformat()
+
+
+class MessagePage(BaseModel):
+    items: list[MessageResponse]
+    next_cursor: str | None = None
