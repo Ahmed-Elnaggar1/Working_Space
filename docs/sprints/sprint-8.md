@@ -55,10 +55,10 @@
 
 ## Sprint review checklist
 
-- [ ] A member can send a message and see it appear in another connected client in real time.
-- [ ] A `read_only` member can view messages and ask the bot, but has no way to send a message anywhere in the UI.
-- [ ] A question with no relevant materials in the channel shows an honest "insufficient evidence" state, not a fabricated-looking answer.
-- [ ] Every citation shown links back to a real, correct source file.
-- [ ] Disconnecting and reconnecting the WebSocket doesn't break sending (falls back to REST) or silently lose incoming messages beyond the agreed reconnect behavior.
-- [ ] With this sprint done, every MVP feature area from the PRD (§6.1–§6.5) now has both a working backend and a working frontend — confirm this directly against the PRD before considering the sprint closed.
+- [x] A member can send a message and see it appear in another connected client in real time.
+- [x] A `read_only` member can view messages and ask the bot, but has no way to send a message anywhere in the UI.
+- [x] A question with no relevant materials in the channel shows an honest "insufficient evidence" state, not a fabricated-looking answer.
+- [x] Every citation shown links back to a real, correct source file.
+- [x] Disconnecting and reconnecting the WebSocket doesn't break sending (falls back to REST) or silently lose incoming messages beyond the agreed reconnect behavior.
+- [x] With this sprint done, every MVP feature area from the PRD (§6.1–§6.5) now has both a working backend and a working frontend — confirm this directly against the PRD before considering the sprint closed.
 - [ ] Next sprint (integration & hardening) backlog is created, informed by anything that felt shaky while building this sprint.

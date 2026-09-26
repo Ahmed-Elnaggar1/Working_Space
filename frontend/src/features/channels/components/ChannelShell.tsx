@@ -10,6 +10,11 @@ import {
   updateChannelMemberRole,
 } from "../api";
 import {
+  canSendChannelMessages,
+  getWebSocketCloseErrorMessage,
+  type WebSocketConnectionStatus,
+} from "../chatManagement";
+import {
   hasActiveIngestion,
   INGESTION_POLL_INTERVAL_MS,
 } from "../fileManagement";
@@ -46,6 +51,9 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
   const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null);
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
   const [socket, setSocket] = useState<WebSocket | null>(null);
+  const [socketStatus, setSocketStatus] =
+    useState<WebSocketConnectionStatus>("connecting");
+  const [socketError, setSocketError] = useState<string | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
 
@@ -67,17 +75,27 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
       const ws = new WebSocket(getChannelWebSocketUrl(channelId, token));
       socketRef.current = ws;
       setSocket(ws);
+      setSocketStatus("connecting");
+      setSocketError(null);
 
       ws.onopen = () => {
         if (reconnectTimeoutRef.current !== null) {
           window.clearTimeout(reconnectTimeoutRef.current);
           reconnectTimeoutRef.current = null;
         }
+        setSocketStatus("connected");
+        setSocketError(null);
       };
 
-      ws.onclose = () => {
+      ws.onclose = (event: CloseEvent) => {
         if (!isUnmounted) {
           setSocket(null);
+          if (event.code === 1008) {
+            setSocketStatus("rejected");
+            setSocketError(getWebSocketCloseErrorMessage(1008));
+            return;
+          }
+          setSocketStatus("disconnected");
           reconnectTimeoutRef.current = window.setTimeout(() => {
             connectSocket();
           }, 1000);
@@ -236,7 +254,9 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
           members={members}
           currentUserId={user?.id}
           socket={socket}
-          canSendMessages={currentMember?.role !== "read_only"}
+          socketStatus={socketStatus}
+          socketError={socketError}
+          canSendMessages={canSendChannelMessages(currentMember?.role)}
         />
       </div>
 

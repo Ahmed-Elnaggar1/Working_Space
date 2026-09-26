@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { ApiError } from "../../../shared/api";
 import { getChannelMessages, postChannelMessage } from "../api";
+import {
+  getChatMessageActionErrorMessage,
+  getSendFallbackNotice,
+  type WebSocketConnectionStatus,
+} from "../chatManagement";
 import type { ChannelMember, ChannelMessage } from "../types";
 import styles from "./MessageHistory.module.css";
 
@@ -9,6 +14,8 @@ interface MessageHistoryProps {
   members: ChannelMember[];
   currentUserId: string | undefined;
   socket: WebSocket | null;
+  socketStatus?: WebSocketConnectionStatus;
+  socketError?: string | null;
   canSendMessages: boolean;
 }
 
@@ -17,6 +24,8 @@ export function MessageHistory({
   members,
   currentUserId,
   socket,
+  socketStatus = "connecting",
+  socketError = null,
   canSendMessages,
 }: MessageHistoryProps) {
   const [messages, setMessages] = useState<ChannelMessage[]>([]);
@@ -27,6 +36,7 @@ export function MessageHistory({
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [fallbackNotice, setFallbackNotice] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -183,6 +193,7 @@ export function MessageHistory({
     };
 
     if (socket && socket.readyState === WebSocket.OPEN) {
+      setFallbackNotice(null);
       setMessages((currentMessages) => [...currentMessages, optimisticMessage]);
       requestAnimationFrame(() => {
         if (scrollRef.current) {
@@ -198,7 +209,7 @@ export function MessageHistory({
             (message) => message.id !== optimisticMessage.id,
           ),
         );
-        setSendError("Failed to send message. Please try again.");
+        setSendError("Failed to send message over socket. Please try again.");
       } finally {
         setIsSending(false);
       }
@@ -210,17 +221,14 @@ export function MessageHistory({
         content: trimmedContent,
       });
       setMessages((currentMessages) => [...currentMessages, createdMessage]);
+      setFallbackNotice(getSendFallbackNotice());
       requestAnimationFrame(() => {
         if (scrollRef.current) {
           scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
       });
     } catch (sendErrorObject) {
-      setSendError(
-        sendErrorObject instanceof ApiError
-          ? sendErrorObject.message
-          : "Unable to send message. Please try again.",
-      );
+      setSendError(getChatMessageActionErrorMessage(sendErrorObject));
     } finally {
       setIsSending(false);
     }
@@ -241,13 +249,43 @@ export function MessageHistory({
           <p className={styles.eyebrow}>Conversation</p>
           <h2 id="message-history-title">Message history</h2>
         </div>
-        {isLoadingOlder && (
-          <span className={styles.loadingLabel}>Loading older...</span>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          {socketStatus === "disconnected" && !socketError && (
+            <span
+              className={styles.offlineNotice}
+              data-testid="ws-disconnected-badge"
+            >
+              Real-time offline (HTTP fallback active)
+            </span>
+          )}
+          {isLoadingOlder && (
+            <span className={styles.loadingLabel}>Loading older...</span>
+          )}
+        </div>
       </div>
+
+      {socketError && (
+        <div
+          className={styles.socketAlert}
+          role="alert"
+          data-testid="ws-rejection-notice"
+        >
+          <span aria-hidden="true">⚠️</span>
+          <span>{socketError}</span>
+        </div>
+      )}
 
       {error && <p className={styles.error}>{error}</p>}
       {sendError && <p className={styles.error}>{sendError}</p>}
+      {fallbackNotice && (
+        <p
+          className={styles.fallbackNotice}
+          role="status"
+          data-testid="fallback-send-notice"
+        >
+          ℹ️ {fallbackNotice}
+        </p>
+      )}
 
       {isLoading ? (
         <p className={styles.status}>Loading messages...</p>
@@ -276,30 +314,40 @@ export function MessageHistory({
             )}
           </div>
 
-          <form className={styles.composer} onSubmit={handleSubmit}>
-            <textarea
-              className={styles.input}
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              placeholder={
-                canSendMessages
-                  ? "Write a message..."
-                  : "Read-only members cannot send messages"
-              }
-              rows={2}
-              disabled={!canSendMessages || isSending}
-              aria-label="Message input"
-            />
-            <button
-              className={styles.sendButton}
-              type="submit"
-              disabled={
-                !canSendMessages || isSending || draft.trim().length === 0
-              }
+          {canSendMessages ? (
+            <form
+              className={styles.composer}
+              onSubmit={handleSubmit}
+              data-testid="chat-composer-form"
             >
-              {isSending ? "Sending..." : "Send"}
-            </button>
-          </form>
+              <textarea
+                className={styles.input}
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                placeholder="Write a message..."
+                rows={2}
+                disabled={isSending}
+                aria-label="Message input"
+              />
+              <button
+                className={styles.sendButton}
+                type="submit"
+                disabled={isSending || draft.trim().length === 0}
+              >
+                {isSending ? "Sending..." : "Send"}
+              </button>
+            </form>
+          ) : (
+            <div
+              className={styles.readOnlyNotice}
+              data-testid="read-only-chat-notice"
+            >
+              <p>
+                You have read-only permissions in this channel. You can view
+                messages and ask the bot, but cannot send messages.
+              </p>
+            </div>
+          )}
         </>
       )}
     </section>

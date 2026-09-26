@@ -131,6 +131,46 @@
   color: var(--color-error);
 }
 
+.socketAlert {
+  padding: 0.6rem 1rem;
+  background: rgba(239, 68, 68, 0.12);
+  border-bottom: 1px solid rgba(239, 68, 68, 0.3);
+  color: var(--color-error, #ef4444);
+  font-size: 0.82rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.offlineNotice {
+  color: var(--text-muted, #94a3b8);
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  background: var(--bg-surface-elevated, rgba(255, 255, 255, 0.05));
+  border-radius: var(--radius-sm, 4px);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+}
+
+.fallbackNotice {
+  padding: 0.45rem 1rem;
+  background: rgba(59, 130, 246, 0.1);
+  border-top: 1px solid rgba(59, 130, 246, 0.2);
+  color: var(--color-primary, #3b82f6);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.readOnlyNotice {
+  padding: 1rem 1.1rem;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-surface-elevated, rgba(255, 255, 255, 0.02));
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-align: center;
+  font-style: italic;
+}
+
 @media (max-width: 600px) {
   .messageMeta {
     align-items: flex-start;
@@ -138,3 +178,4 @@
     gap: 0.15rem;
   }
 }
+
