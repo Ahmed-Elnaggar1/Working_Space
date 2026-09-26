@@ -44,6 +44,7 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null);
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
+  const [socket, setSocket] = useState<WebSocket | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
 
@@ -64,6 +65,7 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
 
       const ws = new WebSocket(getChannelWebSocketUrl(channelId, token));
       socketRef.current = ws;
+      setSocket(ws);
 
       ws.onopen = () => {
         if (reconnectTimeoutRef.current !== null) {
@@ -74,6 +76,7 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
 
       ws.onclose = () => {
         if (!isUnmounted) {
+          setSocket(null);
           reconnectTimeoutRef.current = window.setTimeout(() => {
             connectSocket();
           }, 1000);
@@ -89,6 +92,7 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
         socketRef.current.close();
         socketRef.current = null;
       }
+      setSocket(null);
       if (reconnectTimeoutRef.current !== null) {
         window.clearTimeout(reconnectTimeoutRef.current);
       }
@@ -230,6 +234,8 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
           channelId={channelId}
           members={members}
           currentUserId={user?.id}
+          socket={socket}
+          canSendMessages={currentMember?.role !== "read_only"}
         />
       </div>
 
