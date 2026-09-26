@@ -1,9 +1,15 @@
-import { api, getBaseUrl, getTokenProvider, parseApiError } from "../../shared/api";
+import {
+  api,
+  getBaseUrl,
+  getTokenProvider,
+  parseApiError,
+} from "../../shared/api";
 import type {
   AddChannelMemberInput,
   Channel,
   ChannelFile,
   ChannelMember,
+  ChannelMessagePage,
   MembershipResponse,
   UpdateChannelMemberInput,
 } from "./types";
@@ -43,6 +49,15 @@ export function removeChannelMember(
 
 export function getChannelFiles(channelId: string): Promise<ChannelFile[]> {
   return api.get<ChannelFile[]>(`/channels/${channelId}/files`);
+}
+
+export function getChannelMessages(
+  channelId: string,
+  before?: string,
+): Promise<ChannelMessagePage> {
+  return api.get<ChannelMessagePage>(`/channels/${channelId}/messages`, {
+    params: { limit: 50, before },
+  });
 }
 
 export function uploadChannelFile(

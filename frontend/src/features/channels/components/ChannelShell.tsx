@@ -25,6 +25,7 @@ import type {
 import { FileList } from "./FileList";
 import { FileUploadForm } from "./FileUploadForm";
 import { InviteMemberForm } from "./InviteMemberForm";
+import { MessageHistory } from "./MessageHistory";
 import styles from "./ChannelShell.module.css";
 
 interface ChannelShellProps {
@@ -171,6 +172,15 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
     <section className={styles.shell}>
       <p className={styles.eyebrow}>Channel</p>
       <h1>{channel.name}</h1>
+
+      <div className={styles.section}>
+        <MessageHistory
+          key={channelId}
+          channelId={channelId}
+          members={members}
+          currentUserId={user?.id}
+        />
+      </div>
 
       <div className={styles.section}>
         <h2>Files</h2>
