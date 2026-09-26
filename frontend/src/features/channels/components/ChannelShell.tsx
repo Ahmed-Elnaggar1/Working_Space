@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
-import { ApiError } from "../../../shared/api";
+import { useEffect, useRef, useState } from "react";
+import { ApiError, getTokenProvider } from "../../../shared/api";
 import { useAuth } from "../../auth/useAuth";
 import {
   getChannel,
   getChannelFiles,
   getChannelMembers,
+  getChannelWebSocketUrl,
   removeChannelMember,
   updateChannelMemberRole,
 } from "../api";
@@ -43,6 +44,56 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null);
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
+  const socketRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const tokenProvider = getTokenProvider();
+    const token = tokenProvider ? tokenProvider() : null;
+
+    if (!token) {
+      return;
+    }
+
+    let isUnmounted = false;
+
+    const connectSocket = () => {
+      if (isUnmounted) {
+        return;
+      }
+
+      const ws = new WebSocket(getChannelWebSocketUrl(channelId, token));
+      socketRef.current = ws;
+
+      ws.onopen = () => {
+        if (reconnectTimeoutRef.current !== null) {
+          window.clearTimeout(reconnectTimeoutRef.current);
+          reconnectTimeoutRef.current = null;
+        }
+      };
+
+      ws.onclose = () => {
+        if (!isUnmounted) {
+          reconnectTimeoutRef.current = window.setTimeout(() => {
+            connectSocket();
+          }, 1000);
+        }
+      };
+    };
+
+    connectSocket();
+
+    return () => {
+      isUnmounted = true;
+      if (socketRef.current) {
+        socketRef.current.close();
+        socketRef.current = null;
+      }
+      if (reconnectTimeoutRef.current !== null) {
+        window.clearTimeout(reconnectTimeoutRef.current);
+      }
+    };
+  }, [channelId]);
 
   useEffect(() => {
     let isMounted = true;

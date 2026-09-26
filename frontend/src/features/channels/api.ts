@@ -51,6 +51,17 @@ export function getChannelFiles(channelId: string): Promise<ChannelFile[]> {
   return api.get<ChannelFile[]>(`/channels/${channelId}/files`);
 }
 
+export function getChannelWebSocketUrl(
+  channelId: string,
+  token: string,
+  baseUrl: string = getBaseUrl(),
+): string {
+  const normalizedBase = baseUrl.replace(/\/+$/, "");
+  const protocol = normalizedBase.startsWith("https://") ? "wss" : "ws";
+  const target = normalizedBase.replace(/^https?:\/\//, "");
+  return `${protocol}://${target}/ws/channels/${channelId}?token=${encodeURIComponent(token)}`;
+}
+
 export function getChannelMessages(
   channelId: string,
   before?: string,
