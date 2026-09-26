@@ -88,6 +88,10 @@ export interface ChannelMessage {
   created_at: string;
 }
 
+export interface CreateChannelMessageInput {
+  content: string;
+}
+
 export interface ChannelMessagePage {
   items: ChannelMessage[];
   next_cursor: string | null;

@@ -10,7 +10,9 @@ import type {
   Channel,
   ChannelFile,
   ChannelMember,
+  ChannelMessage,
   ChannelMessagePage,
+  CreateChannelMessageInput,
   MembershipResponse,
   UpdateChannelMemberInput,
 } from "./types";
@@ -70,6 +72,13 @@ export function getChannelMessages(
   return api.get<ChannelMessagePage>(`/channels/${channelId}/messages`, {
     params: { limit: 50, before },
   });
+}
+
+export function postChannelMessage(
+  channelId: string,
+  input: CreateChannelMessageInput,
+): Promise<ChannelMessage> {
+  return api.post<ChannelMessage>(`/channels/${channelId}/messages`, input);
 }
 
 export function uploadChannelFile(
