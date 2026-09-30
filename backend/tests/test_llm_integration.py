@@ -104,6 +104,26 @@ def test_claude_client_generates_response_on_success() -> None:
     assert mock_post.called
 
 
+def test_claude_client_retries_one_transient_failure() -> None:
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "content": [{"type": "text", "text": "Recovered answer."}]
+    }
+    mock_response.raise_for_status.return_value = None
+    client = ClaudeClient(api_key="test-api-key")
+    chunks = [{"file_id": uuid4(), "file_name": "spec.pdf", "page_number": 1, "content": "Sample content"}]
+
+    with (
+        patch("httpx.Client.post", side_effect=[httpx.TimeoutException("Timeout"), mock_response]) as mock_post,
+        patch("app.bot.llm.time.sleep") as mock_sleep,
+    ):
+        result = client.generate_response("What is the spec?", chunks)
+
+    assert result == "Recovered answer."
+    assert mock_post.call_count == 2
+    mock_sleep.assert_called_once()
+
+
 def test_claude_client_timeout_raises_llm_timeout_error() -> None:
     client = ClaudeClient(api_key="test-api-key")
     chunks = [{"file_id": uuid4(), "file_name": "spec.pdf", "page_number": 1, "content": "Sample content"}]

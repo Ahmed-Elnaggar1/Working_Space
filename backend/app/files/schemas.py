@@ -15,6 +15,7 @@ class FileResponse(BaseModel):
     uploaded_by: UUID
     ingestion_status: str
     ingestion_error: str | None = None
+    ingestion_retry_count: int = 0
     created_at: datetime
 
     @model_validator(mode="before")

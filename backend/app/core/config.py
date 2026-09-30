@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     LLM_API_KEY: str = "placeholder-local-key"
     LLM_PROVIDER: str = "placeholder"
     LLM_TIMEOUT_SECONDS: float = 30.0
+    LLM_MAX_RETRIES: int = 1
+    LLM_RETRY_DELAY_SECONDS: float = 1.0
+    MAX_FILE_SIZE_BYTES: int = 10 * 1024 * 1024
+    MAX_INGESTION_RETRIES: int = 3
     OLLAMA_MODEL: str = "qwen2.5:7b-instruct"
     OLLAMA_BASE_URL: str = "http://localhost:11434"
 

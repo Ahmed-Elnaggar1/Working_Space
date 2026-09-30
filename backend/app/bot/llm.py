@@ -1,10 +1,18 @@
 import httpx
+import time
 from typing import Protocol
 
 from app.core.config import get_settings
 
 
 INSUFFICIENT_EVIDENCE_MESSAGE = "Insufficient evidence in this channel to answer the question."
+RAG_PROMPT_TEMPLATE = (
+    "You are a helpful assistant answering questions strictly based on the provided channel materials.\n"
+    "Answer the question using only the facts in the context. Cite the file name and page number for facts.\n"
+    "If the context does not contain sufficient information to answer the question, say so clearly.\n\n"
+    "Context:\n{context}\n\n"
+    "Question: {question}"
+)
 
 
 class LLMClient(Protocol):
@@ -38,6 +46,28 @@ class LLMTimeoutError(LLMError):
 
 class LLMServiceError(LLMError):
     """Raised when an LLM call fails or returns an error status."""
+
+
+def _request_with_retries(request):
+    settings = get_settings()
+    max_attempts = settings.LLM_MAX_RETRIES + 1
+
+    for attempt in range(max_attempts):
+        try:
+            return request()
+        except httpx.TimeoutException as error:
+            retryable = True
+            last_error = error
+        except httpx.RequestError as error:
+            retryable = True
+            last_error = error
+        except httpx.HTTPStatusError as error:
+            retryable = error.response.status_code == 429 or error.response.status_code >= 500
+            last_error = error
+
+        if not retryable or attempt == max_attempts - 1:
+            raise last_error
+        time.sleep(settings.LLM_RETRY_DELAY_SECONDS)
 
 
 class PlaceholderLLMClient:
@@ -76,13 +106,7 @@ class ClaudeClient:
             return INSUFFICIENT_EVIDENCE_MESSAGE
 
         context = build_context(chunks)
-        prompt = (
-            "You are a helpful assistant answering questions strictly based on the provided channel materials.\n"
-            "Answer the question using only the facts in the context. Cite the file name and page number for facts.\n"
-            "If the context does not contain sufficient information to answer the question, say so clearly.\n\n"
-            f"Context:\n{context}\n\n"
-            f"Question: {question}"
-        )
+        prompt = RAG_PROMPT_TEMPLATE.format(context=context, question=question)
 
         headers = {
             "x-api-key": self.api_key,
@@ -97,12 +121,9 @@ class ClaudeClient:
 
         try:
             with httpx.Client(timeout=self.timeout) as client:
-                response = client.post(
-                    f"{self.base_url}/v1/messages",
-                    headers=headers,
-                    json=payload,
+                response = _request_with_retries(
+                    lambda: self._post_and_validate(client, headers, payload),
                 )
-                response.raise_for_status()
                 data = response.json()
                 content_blocks = data.get("content", [])
                 text_blocks = [
@@ -122,6 +143,11 @@ class ClaudeClient:
                 raise
             raise LLMServiceError(f"Unexpected Claude API error: {exc}") from exc
 
+    def _post_and_validate(self, client: httpx.Client, headers: dict, payload: dict) -> httpx.Response:
+        response = client.post(f"{self.base_url}/v1/messages", headers=headers, json=payload)
+        response.raise_for_status()
+        return response
+
 
 class OllamaClient:
     """Local, free LLM provider that exposes an OpenAI-compatible endpoint."""
@@ -137,23 +163,20 @@ class OllamaClient:
             return INSUFFICIENT_EVIDENCE_MESSAGE
 
         context = build_context(chunks)
-        prompt = (
-            "Use only the provided channel materials. Answer the question based on them and "
-            "cite the page numbers from the source chunks.\n\n"
-            f"Question: {question}\n\nContext:\n{context}"
-        )
+        prompt = RAG_PROMPT_TEMPLATE.format(context=context, question=question)
 
         try:
             with httpx.Client(timeout=self.timeout) as client:
-                response = client.post(
-                    f"{self.base_url}/api/chat",
-                    json={
-                        "model": self.model_name,
-                        "messages": [{"role": "user", "content": prompt}],
-                        "stream": False,
-                    },
+                response = _request_with_retries(
+                    lambda: self._post_and_validate(
+                        client,
+                        {
+                            "model": self.model_name,
+                            "messages": [{"role": "user", "content": prompt}],
+                            "stream": False,
+                        },
+                    ),
                 )
-                response.raise_for_status()
                 payload = response.json()
                 try:
                     content = payload["message"]["content"]
@@ -172,6 +195,11 @@ class OllamaClient:
             if isinstance(exc, LLMError):
                 raise
             raise LLMServiceError(f"Unexpected Ollama error: {exc}") from exc
+
+    def _post_and_validate(self, client: httpx.Client, payload: dict) -> httpx.Response:
+        response = client.post(f"{self.base_url}/api/chat", json=payload)
+        response.raise_for_status()
+        return response
 
 
 def build_llm_client():

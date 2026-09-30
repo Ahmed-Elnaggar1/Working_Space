@@ -384,6 +384,27 @@ def test_api_retry_ingestion(client: TestClient, db_session: Session, mock_stora
     assert "Hello world" in chunks[0].content
 
 
+def test_api_retry_ingestion_enforces_retry_limit(client: TestClient, db_session: Session, mock_storage):
+    _, channel = setup_workspace_and_channel(db_session, DEV_USER_ID)
+    file_id = uuid4()
+    file_record = File(
+        id=file_id,
+        channel_id=channel.id,
+        filename="retry-limit.txt",
+        storage_path=f"channels/{channel.id}/{file_id}/retry-limit.txt",
+        uploaded_by=DEV_USER_ID,
+        ingestion_status="failed",
+        ingestion_retry_count=3,
+    )
+    db_session.add(file_record)
+    db_session.commit()
+
+    response = client.post(f"/channels/{channel.id}/files/{file_id}/retry-ingestion")
+
+    assert response.status_code == 429
+    assert "maximum number of ingestion retries" in response.json()["error"]["message"]
+
+
 # ==================== PERMISSIONS TESTS ====================
 
 def test_files_permissions_enforcement(client: TestClient, db_session: Session):

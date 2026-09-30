@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import CurrentUser, get_current_user
+from app.core.config import get_settings
 from app.core.db import get_db
 from app.files.schemas import FileResponse
 from app.files.storage import storage
@@ -29,6 +30,25 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["files"])
 
 ALLOWED_EXTENSIONS = {".pdf", ".txt"}
+ALLOWED_MIME_TYPES = {
+    ".pdf": {"application/pdf"},
+    ".txt": {"text/plain"},
+}
+
+
+def _file_response(file_record: File) -> dict:
+    return {
+        "id": file_record.id,
+        "channel_id": file_record.channel_id,
+        "filename": file_record.filename,
+        "file_name": file_record.filename,
+        "storage_path": file_record.storage_path,
+        "uploaded_by": file_record.uploaded_by,
+        "ingestion_status": file_record.ingestion_status,
+        "ingestion_error": file_record.ingestion_error,
+        "ingestion_retry_count": file_record.ingestion_retry_count,
+        "created_at": file_record.created_at,
+    }
 
 
 # Upload files
@@ -56,8 +76,21 @@ async def upload_file(
             detail="Unsupported file type. Only PDF (.pdf) and plain text (.txt) files are supported.",
         )
 
+    content_type = (file.content_type or "").lower().split(";", 1)[0].strip()
+    if content_type not in ALLOWED_MIME_TYPES[extension]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"MIME type {content_type or 'unknown'} is not valid for {extension} files.",
+        )
+
     file_id = uuid4()
-    content = await file.read()
+    settings = get_settings()
+    content = await file.read(settings.MAX_FILE_SIZE_BYTES + 1)
+    if len(content) > settings.MAX_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File exceeds the maximum allowed size of {settings.MAX_FILE_SIZE_BYTES} bytes.",
+        )
     storage_path = f"channels/{channel_id}/{file_id}/{safe_filename}"
 
     try:
@@ -85,17 +118,7 @@ async def upload_file(
 
     background_tasks.add_task(run_ingestion_pipeline, file_record.id)
 
-    return {
-        "id": file_record.id,
-        "channel_id": file_record.channel_id,
-        "filename": file_record.filename,
-        "file_name": file_record.filename,
-        "storage_path": file_record.storage_path,
-        "uploaded_by": file_record.uploaded_by,
-        "ingestion_status": file_record.ingestion_status,
-        "ingestion_error": file_record.ingestion_error,
-        "created_at": file_record.created_at,
-    }
+    return _file_response(file_record)
 
 
 @router.get(
@@ -109,17 +132,7 @@ async def list_files(
 ):
     files = (await db.scalars(select(File).where(File.channel_id == channel_id))).all()
     return [
-        {
-            "id": record.id,
-            "channel_id": record.channel_id,
-            "filename": record.filename,
-            "file_name": record.filename,
-            "storage_path": record.storage_path,
-            "uploaded_by": record.uploaded_by,
-            "ingestion_status": record.ingestion_status,
-            "ingestion_error": record.ingestion_error,
-            "created_at": record.created_at,
-        }
+        _file_response(record)
         for record in files
     ]
 
@@ -173,24 +186,22 @@ async def retry_ingestion(
             detail="Completed file ingestions cannot be retried",
         )
 
+    settings = get_settings()
+    if file_record.ingestion_retry_count >= settings.MAX_INGESTION_RETRIES:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="The maximum number of ingestion retries has been reached.",
+        )
+
     file_record.ingestion_status = "pending"
     file_record.ingestion_error = None
+    file_record.ingestion_retry_count += 1
     await db.commit()
     await db.refresh(file_record)
 
     background_tasks.add_task(run_ingestion_pipeline, file_record.id)
 
-    return {
-        "id": file_record.id,
-        "channel_id": file_record.channel_id,
-        "filename": file_record.filename,
-        "file_name": file_record.filename,
-        "storage_path": file_record.storage_path,
-        "uploaded_by": file_record.uploaded_by,
-        "ingestion_status": file_record.ingestion_status,
-        "ingestion_error": file_record.ingestion_error,
-        "created_at": file_record.created_at,
-    }
+    return _file_response(file_record)
 
 
 @router.delete(

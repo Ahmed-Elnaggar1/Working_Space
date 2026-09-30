@@ -115,6 +115,7 @@ class File(Base):
     uploaded_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
     ingestion_status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
     ingestion_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ingestion_retry_count: Mapped[int] = mapped_column(default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     channel: Mapped["Channel"] = relationship(back_populates="files")

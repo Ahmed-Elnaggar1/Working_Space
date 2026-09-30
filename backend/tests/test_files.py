@@ -167,6 +167,33 @@ def test_upload_unsupported_file_type(client: TestClient) -> None:
     assert "Unsupported file type" in response.json()["error"]["message"]
 
 
+def test_upload_rejects_mismatched_mime_type(client: TestClient) -> None:
+    _, channel_id = create_workspace_and_channel(client, DEV_USER_ID)
+
+    response = client.post(
+        f"/channels/{channel_id}/files",
+        files={"file": ("notes.txt", b"hello", "application/pdf")},
+    )
+
+    assert response.status_code == 400
+    assert "MIME type" in response.json()["error"]["message"]
+
+
+def test_upload_rejects_files_over_configured_limit(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, channel_id = create_workspace_and_channel(client, DEV_USER_ID)
+    monkeypatch.setenv("MAX_FILE_SIZE_BYTES", "4")
+
+    response = client.post(
+        f"/channels/{channel_id}/files",
+        files={"file": ("notes.txt", b"hello", "text/plain")},
+    )
+
+    assert response.status_code == 413
+    assert "maximum allowed size" in response.json()["error"]["message"]
+
+
 def test_upload_sanitizes_filename(client: TestClient) -> None:
     _, channel_id = create_workspace_and_channel(client, DEV_USER_ID)
 
