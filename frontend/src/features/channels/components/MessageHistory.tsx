@@ -5,6 +5,7 @@ import {
   getChatMessageActionErrorMessage,
   getSendFallbackNotice,
   type WebSocketConnectionStatus,
+  mergeRecentMessages,
 } from "../chatManagement";
 import type { ChannelMember, ChannelMessage } from "../types";
 import styles from "./MessageHistory.module.css";
@@ -38,6 +39,7 @@ export function MessageHistory({
   const [sendError, setSendError] = useState<string | null>(null);
   const [fallbackNotice, setFallbackNotice] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const previousSocketStatusRef = useRef(socketStatus);
 
   useEffect(() => {
     let isMounted = true;
@@ -78,6 +80,39 @@ export function MessageHistory({
       isMounted = false;
     };
   }, [channelId]);
+
+  useEffect(() => {
+    const didReconnect =
+      previousSocketStatusRef.current === "disconnected" &&
+      socketStatus === "connected";
+    previousSocketStatusRef.current = socketStatus;
+
+    if (!didReconnect) {
+      return;
+    }
+
+    let isMounted = true;
+    async function fillReconnectGap() {
+      try {
+        const page = await getChannelMessages(channelId);
+        if (isMounted) {
+          setMessages((currentMessages) =>
+            mergeRecentMessages(currentMessages, page.items),
+          );
+          setNextCursor((currentCursor) => currentCursor ?? page.next_cursor);
+        }
+      } catch {
+        if (isMounted) {
+          setError("Unable to refresh messages after reconnecting.");
+        }
+      }
+    }
+
+    void fillReconnectGap();
+    return () => {
+      isMounted = false;
+    };
+  }, [channelId, socketStatus]);
 
   useEffect(() => {
     if (!socket) {

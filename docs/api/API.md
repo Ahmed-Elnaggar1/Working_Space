@@ -66,7 +66,7 @@ Response `200`:
 
 ### `POST /auth/refresh`
 
-Accepts a refresh token via `HttpOnly` cookie or JSON payload `{"refresh_token":"jwt"}` and returns a rotated access token and refresh token. Refresh tokens must be revocable and must not be stored plaintext.
+The browser uses the rotated refresh token from the `HttpOnly` cookie and receives an access token in the response. Refresh tokens are also accepted in the JSON payload for non-browser clients. Refresh tokens must be revocable and must not be stored plaintext.
 
 ### `POST /auth/logout`
 
@@ -157,6 +157,7 @@ Removes membership. Requires `owner` or `admin`.
 ### `POST /channels/{channel_id}/files`
 
 Multipart upload. Requires upload permission. The response includes file metadata and an ingestion status, never raw file content.
+Uploads are limited to 10 MiB by default. Accepted files must use the `.pdf` extension with `application/pdf` or the `.txt` extension with `text/plain`; the extension and declared MIME type must agree. The size limit is configurable with `MAX_FILE_SIZE_BYTES`.
 
 ### `GET /channels/{channel_id}/files`
 
@@ -169,6 +170,11 @@ Streams a file only after verifying both the file's channel and the caller's mem
 ### `POST /channels/{channel_id}/files/{file_id}/retry-ingestion`
 
 Retries the ingestion process for a failed file. Requires upload files permission. Returns the updated file metadata with the ingestion status set back to `pending`.
+The initial ingestion is followed by at most 3 retries by default. Each retry increments `ingestion_retry_count`; once the limit is reached, the endpoint returns `429 Too Many Requests`. The limit is configurable with `MAX_INGESTION_RETRIES`.
+
+## Bot reliability and prompt contract
+
+The bot uses the canonical grounded prompt documented in `docs/modules/bot.md`. Provider calls have a 30-second timeout by default and retry once after a 1-second delay for timeouts, connection failures, HTTP 429, and HTTP 5xx responses. These values are configurable with `LLM_TIMEOUT_SECONDS`, `LLM_MAX_RETRIES`, and `LLM_RETRY_DELAY_SECONDS`.
 
 ## Chat
 

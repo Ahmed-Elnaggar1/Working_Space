@@ -7,6 +7,7 @@ import {
   getChatMessageActionErrorMessage,
   getSendFallbackNotice,
   getWebSocketCloseErrorMessage,
+  mergeRecentMessages,
 } from "./chatManagement";
 import type { ChannelMemberRole } from "./types";
 
@@ -42,7 +43,9 @@ describe("S8-13: Error-state coverage", () => {
     expect(rejectionMessage).toContain(
       "Real-time connection was rejected (unauthorized or session expired)",
     );
-    expect(rejectionMessage).toContain("Messages will be sent via HTTP fallback");
+    expect(rejectionMessage).toContain(
+      "Messages will be sent via HTTP fallback",
+    );
   });
 
   it("returns verified, non-generic UI state for unexpected WebSocket disconnect", () => {
@@ -88,5 +91,46 @@ describe("S8-13: Error-state coverage", () => {
     expect(getChatMessageActionErrorMessage(new Error("Network failed"))).toBe(
       "Network failed",
     );
+  });
+});
+
+describe("S8 reconnect gap filling", () => {
+  it("merges recent messages by id and preserves chronological order", () => {
+    const current = [
+      {
+        id: "1",
+        channel_id: "c",
+        user_id: "u",
+        content: "one",
+        created_at: "2026-01-01T00:01:00Z",
+      },
+      {
+        id: "2",
+        channel_id: "c",
+        user_id: "u",
+        content: "old",
+        created_at: "2026-01-01T00:02:00Z",
+      },
+    ];
+    const recent = [
+      {
+        id: "2",
+        channel_id: "c",
+        user_id: "u",
+        content: "updated",
+        created_at: "2026-01-01T00:02:00Z",
+      },
+      {
+        id: "3",
+        channel_id: "c",
+        user_id: "u",
+        content: "three",
+        created_at: "2026-01-01T00:03:00Z",
+      },
+    ];
+
+    expect(
+      mergeRecentMessages(current, recent).map((message) => message.content),
+    ).toEqual(["one", "updated", "three"]);
   });
 });

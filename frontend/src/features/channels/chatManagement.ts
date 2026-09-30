@@ -1,11 +1,8 @@
 import { ApiError } from "../../shared/api";
-import type { ChannelMemberRole } from "./types";
+import type { ChannelMemberRole, ChannelMessage } from "./types";
 
 export type WebSocketConnectionStatus =
-  | "connecting"
-  | "connected"
-  | "disconnected"
-  | "rejected";
+  "connecting" | "connected" | "disconnected" | "rejected";
 
 /**
  * S8-12: Role-based visibility for chat and bot.
@@ -58,6 +55,21 @@ export function getWebSocketCloseErrorMessage(code?: number): string {
  */
 export function getSendFallbackNotice(): string {
   return "Delivered via HTTP fallback (real-time socket disconnected).";
+}
+
+export function mergeRecentMessages(
+  currentMessages: ChannelMessage[],
+  recentMessages: ChannelMessage[],
+): ChannelMessage[] {
+  const messagesById = new Map(
+    currentMessages.map((message) => [message.id, message]),
+  );
+  for (const message of recentMessages) {
+    messagesById.set(message.id, message);
+  }
+  return [...messagesById.values()].sort(
+    (left, right) => Date.parse(left.created_at) - Date.parse(right.created_at),
+  );
 }
 
 /**

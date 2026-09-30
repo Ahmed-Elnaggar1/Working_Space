@@ -25,7 +25,7 @@ flowchart TD
     %% Router Layer
     subgraph RoutingLayer ["3. Routing Engine (src/app/router.tsx)"]
         RouterProvider --> Router["🛣️ createBrowserRouter(...)"]
-        
+
         %% Public Routes
         Router -->|Path: '/'| Redirect["↪️ &lt;Navigate to='/login' replace /&gt;"]
         Router -->|Path: '/login'| LoginPage["📄 src/pages/LoginPage.tsx"]
@@ -44,7 +44,7 @@ flowchart TD
     subgraph ComponentsLayer ["4. Feature & Layout Components"]
         LoginPage --> AuthLayout["🧱 src/shared/layouts/AuthLayout<br/>(Glassmorphic Card &amp; Header)"]
         SignupPage --> AuthLayout
-        
+
         LoginPage --> LoginForm["📝 LoginForm.tsx"]
         SignupPage --> SignupForm["📝 SignupForm.tsx"]
 
@@ -76,22 +76,26 @@ flowchart TD
 ## 2. Layer-by-Layer Overview
 
 ### Layer 1: Bootstrapping
+
 - **`index.html`**: The single HTML page downloaded by the browser. Contains `<div id="root"></div>` where React takes control.
 - **`src/main.tsx`**: The JavaScript/TypeScript starting file. Uses React 19's `createRoot()` to mount `<App />` into the DOM.
 - **`src/index.css`**: Global design system variables (colors, borders, gradients, glassmorphism) and CSS reset.
 
 ### Layer 2: State Providers & App Shell
+
 - **`src/app/App.tsx`**: Composes high-level context providers.
 - **`AuthProvider` (`src/features/auth/AuthProvider.tsx`)**: Wraps the whole app so any component can access the logged-in user, authentication status, and login/logout handlers via the `useAuth()` hook.
 - **`RouterProvider`**: Connects React Router to render views based on the current URL.
 
 ### Layer 3: Routing Engine
+
 - **`src/app/router.tsx`**:
   - **Public routes**: `/login`, `/signup`, and default `/` redirect.
   - **Protected routes**: Enclosed in `<ProtectedRoute />`. If a user is not authenticated, they get redirected to `/login`.
   - **Fallbacks**: Any undefined URL matches `*` to show `NotFoundPage`.
 
 ### Layer 4: Feature Components & Layouts
+
 - **Feature-driven folders (`src/features/`)**:
   - `auth`: `LoginForm`, `SignupForm`, `ProtectedRoute`, `useAuth`, `AuthProvider`.
   - `workspaces`: `WorkspaceList`, `CreateWorkspaceForm`, `WorkspaceDetail`.
@@ -99,4 +103,12 @@ flowchart TD
 - **Reusable Layouts (`src/shared/layouts/`)**: Shared shells like `AuthLayout`.
 
 ### Layer 5: Data & API Client
+
 - **`src/shared/api/client.ts`**: Standardized HTTP client wrapping browser `fetch`. Automatically attaches authorization tokens from `AuthProvider` and normalizes API error responses.
+
+## Resolved Client Policies
+
+- **Token storage:** access tokens live only in the `AuthProvider` memory ref; refresh tokens are held by the browser in an `HttpOnly` cookie and are never stored in `localStorage` or `sessionStorage`.
+- **UI errors:** components render API failures inline using the shared `ApiError` status/message, with feature-specific helpers for chat, files, members, and bot actions. Loading failures use an inline status block; mutation failures use an inline form or action error.
+- **WebSocket recovery:** after an unexpected reconnect, the channel refetches the newest message page and merges it by message ID to fill messages missed while disconnected. REST remains the send fallback while the socket is unavailable.
+- **Bot wait state:** requests show a loading state immediately and display a user-facing "Still working" message after 3.5 seconds; provider failures surface a retry action when appropriate.

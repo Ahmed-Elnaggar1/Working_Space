@@ -273,11 +273,15 @@ export function BotAskPanel({ channelId }: BotAskPanelProps) {
                           className={styles.spinner}
                           aria-label="Loading answer"
                         />
-                        <span>Searching channel documents & generating answer...</span>
+                        <span>
+                          Searching channel documents and generating an
+                          answer...
+                        </span>
                       </div>
                       {isLongWaiting && (
                         <p className={styles.longWaitNotice}>
-                          Still working, analyzing materials with the AI model...
+                          Still working, analyzing materials with the AI
+                          model...
                         </p>
                       )}
                     </div>
@@ -317,7 +321,9 @@ export function BotAskPanel({ channelId }: BotAskPanelProps) {
                               const isDownloading =
                                 downloadingFileId === citation.file_id;
                               return (
-                                <li key={`${citation.file_id}-${citation.page}-${idx}`}>
+                                <li
+                                  key={`${citation.file_id}-${citation.page}-${idx}`}
+                                >
                                   <button
                                     type="button"
                                     className={styles.citationButton}
