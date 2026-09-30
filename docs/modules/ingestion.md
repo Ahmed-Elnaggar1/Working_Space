@@ -2,9 +2,9 @@
 
 ## 1. High-Level Overview & Architecture
 
-The **Ingestion Module** (`backend/app/ingestion/`) is responsible for processing uploaded documents (PDF, TXT), extracting their raw textual content, splitting the text into structured chunks while preserving page numbers and section headings, generating vector embeddings, and persisting these chunks in the database (`chunks` table).
+The **Ingestion Module** (`backend/app/ingestion/`) is responsible for processing uploaded documents (PDF, TXT), extracting their raw textual content, splitting the text into structured chunks while preserving page numbers and section headings, generating stored vectors, and persisting these chunks in the database (`chunks` table).
 
-These chunks form the knowledge base for **RAG (Retrieval-Augmented Generation)**, enabling the **Bot Module** to perform channel-scoped semantic vector searches and return grounded answers accompanied by page-level citations.
+These chunks form the knowledge base for **RAG (Retrieval-Augmented Generation)**. The Bot Module currently matches question terms against chunk text within a channel and returns grounded answers accompanied by page-level citations; it does not rely on the placeholder stored vectors for retrieval.
 
 ```mermaid
 flowchart TD
@@ -25,7 +25,7 @@ flowchart TD
     K --> L["DB File Record: status = completed <br> [app/models.py]"]
     
     subgraph Bot / RAG Retrieval ["app/bot/"]
-        M[User Question] --> N["Bot Similarity Search <br> [app/bot/__init__.py]"]
+        M[User Question] --> N["Bot Text Matching <br> [app/bot/__init__.py]"]
         K -.-> N
         N --> O["LLM Generation with Citations <br> [app/bot/llm.py]"]
     end
@@ -54,7 +54,7 @@ To trace how data moves through the codebase, follow these step-by-step file int
 - **`File` Model** (Lines 108–118):
   - Tracks `channel_id`, `filename`, `storage_path`, `uploaded_by`, `ingestion_status` (`pending`, `processing`, `completed`, `failed`), and `ingestion_error`.
 - **`Chunk` Model** (Lines 120–137):
-  - Stores `file_id`, denormalized `channel_id` (for fast channel-isolated vector filtering), `page_number`, `section`, `content`, and `embedding` (`pgvector.Vector`).
+  - Stores `file_id`, denormalized `channel_id` (for fast channel-isolated filtering), `page_number`, `section`, `content`, and `embedding` (`pgvector.Vector`).
 
 ---
 
@@ -93,8 +93,7 @@ To trace how data moves through the codebase, follow these step-by-step file int
 📂 **[app/ingestion/embeddings.py](../../backend/app/ingestion/embeddings.py)**
 - **`generate_embedding(text, dimension=None)`**:
   - Uses `settings.EMBEDDING_DIMENSION` (384).
-  - Produces a deterministic, L2-normalized float vector using SHA-256 hashing.
-  - Shares the identical algorithm with the Bot retrieval module.
+  - Produces a deterministic, L2-normalized float vector using SHA-256 hashing. This placeholder vector is persisted for compatibility but is not used by the current Bot retrieval path.
 
 ---
 

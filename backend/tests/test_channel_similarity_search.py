@@ -1,17 +1,22 @@
 import asyncio
 from uuid import uuid4
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.bot import CHUNK_EMBEDDING_DIMENSION, embed_question, search_channel_chunks
+from app.bot import (
+    CHUNK_EMBEDDING_DIMENSION,
+    INSUFFICIENT_EVIDENCE_THRESHOLD,
+    embed_question,
+    search_channel_chunks,
+)
 from app.core import Base
 from app.models import Channel, Chunk, File, Membership, Role, User, Workspace
 from tests.async_session_adapter import AsyncSessionAdapter
 
 
-def test_search_channel_chunks_filters_to_channel_and_ranks_by_similarity() -> None:
+def test_search_channel_chunks_retrieves_matching_text_with_stale_embeddings() -> None:
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
@@ -19,7 +24,7 @@ def test_search_channel_chunks_filters_to_channel_and_ranks_by_similarity() -> N
     )
     Base.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine)
-    question = "When is the release date?"
+    question = "The AWS Certified AI Practitioner (AIF-C01) has a scaled score between what values?"
     query_vector = embed_question(question)
 
     with session_factory() as session:
@@ -43,7 +48,7 @@ def test_search_channel_chunks_filters_to_channel_and_ranks_by_similarity() -> N
             channel_id=channel_a.id,
             page_number=2,
             section="Overview",
-            content="The release date is 2027-01-15.",
+            content="The AWS Certified AI Practitioner exam has a scaled score from 100 to 1000.",
             embedding=[0.0] * CHUNK_EMBEDDING_DIMENSION,
         )
         other_channel_chunk = Chunk(
@@ -63,11 +68,13 @@ def test_search_channel_chunks_filters_to_channel_and_ranks_by_similarity() -> N
             channel_id=channel_a.id,
             question=question,
             limit=5,
+            min_score=INSUFFICIENT_EVIDENCE_THRESHOLD,
         ))
 
         assert [chunk.id for chunk in results] == [same_channel_chunk.id]
         assert all(chunk.channel_id == channel_a.id for chunk in results)
         assert all(chunk.id != other_channel_chunk.id for chunk in results)
+        assert inspect(results[0]).attrs.file.loaded_value is file_a
 
 
 def test_search_channel_chunks_excludes_non_completed_files() -> None:

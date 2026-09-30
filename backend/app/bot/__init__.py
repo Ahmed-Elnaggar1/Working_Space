@@ -1,8 +1,9 @@
-import math
+import re
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from app.bot.llm import (
     ClaudeClient,
@@ -23,7 +24,12 @@ EMBEDDING_MODEL = get_settings().EMBEDDING_MODEL
 CHUNK_EMBEDDING_DIMENSION = get_settings().EMBEDDING_DIMENSION
 QUESTION_EMBEDDING_DIMENSION = CHUNK_EMBEDDING_DIMENSION
 RETRIEVAL_TOP_K = 5
-INSUFFICIENT_EVIDENCE_THRESHOLD = 0.15
+INSUFFICIENT_EVIDENCE_THRESHOLD = 0.3
+_RETRIEVAL_STOP_WORDS = {
+    "a", "an", "and", "are", "between", "do", "does", "for", "from", "has", "have",
+    "how", "in", "is", "it", "many", "much", "of", "on", "or", "the", "to", "what",
+    "when", "where", "which", "who", "why", "with",
+}
 
 
 def embed_question(question: str) -> list[float]:
@@ -35,27 +41,19 @@ def embed_question(question: str) -> list[float]:
     return generate_embedding(question, dimension=CHUNK_EMBEDDING_DIMENSION)
 
 
-def _coerce_vector(values: object) -> list[float]:
-    if isinstance(values, str):
-        entries = [segment.strip() for segment in values.strip("[] ").split(",") if segment.strip()]
-        return [float(value) for value in entries]
-    if hasattr(values, "tolist") and callable(values.tolist):
-        return [float(value) for value in values.tolist()]
-    if isinstance(values, (list, tuple)):
-        return [float(value) for value in values]
-    raise TypeError("Chunk embedding must be stored as a numeric list or JSON array.")
+def _retrieval_terms(text: str) -> set[str]:
+    return {
+        token
+        for token in re.findall(r"[a-z0-9]+", text.lower())
+        if token not in _RETRIEVAL_STOP_WORDS
+    }
 
 
-def _cosine_similarity(left: list[float], right: list[float]) -> float:
-    if len(left) != len(right):
-        raise ValueError("Embedding dimensions must match for similarity search.")
-
-    dot = sum(a * b for a, b in zip(left, right, strict=False))
-    left_norm = math.sqrt(sum(value * value for value in left))
-    right_norm = math.sqrt(sum(value * value for value in right))
-    if left_norm == 0 or right_norm == 0:
+def _lexical_similarity(question: str, content: str) -> float:
+    question_terms = _retrieval_terms(question)
+    if len(question_terms) < 2:
         return 0.0
-    return dot / (left_norm * right_norm)
+    return len(question_terms & _retrieval_terms(content)) / len(question_terms)
 
 
 async def search_channel_chunks(
@@ -66,9 +64,9 @@ async def search_channel_chunks(
     min_score: float | None = None,
 ) -> list[Chunk]:
     """Return the top-k chunks in a specific channel, ranked by cosine similarity."""
-    query_vector = embed_question(question)
     statement = (
         select(Chunk)
+        .options(joinedload(Chunk.file))
         .join(File, Chunk.file_id == File.id)
         .where(Chunk.channel_id == channel_id, File.ingestion_status == "completed")
     )
@@ -76,8 +74,7 @@ async def search_channel_chunks(
 
     scored_chunks = []
     for chunk in chunks:
-        chunk_vector = _coerce_vector(chunk.embedding)
-        similarity = _cosine_similarity(query_vector, chunk_vector)
+        similarity = _lexical_similarity(question, chunk.content)
         scored_chunks.append((similarity, chunk))
 
     scored_chunks.sort(key=lambda item: item[0], reverse=True)
