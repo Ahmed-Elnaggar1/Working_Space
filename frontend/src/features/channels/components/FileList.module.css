@@ -1,0 +1,234 @@
+.fileList {
+  list-style: none;
+  display: grid;
+  gap: 0.75rem;
+  padding: 0;
+  margin: 0;
+}
+
+.fileItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  transition: border-color 0.15s ease;
+}
+
+.fileItem:hover {
+  border-color: var(--border-strong);
+}
+
+.fileMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.fileNameRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.fileName {
+  margin: 0;
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 0.95rem;
+  word-break: break-all;
+}
+
+.uploaderInfo {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+
+.uploaderTag {
+  color: var(--text-muted);
+}
+
+.ingestionError {
+  margin: 0.2rem 0 0 0;
+  color: var(--color-error);
+  font-size: 0.75rem;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.badgeDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.badgePending {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.badgePending .badgeDot {
+  background: #f59e0b;
+}
+
+.badgeProcessing {
+  background: rgba(59, 130, 246, 0.12);
+  color: #3b82f6;
+  border: 1px solid rgba(59, 130, 246, 0.25);
+}
+
+.badgeProcessing .badgeDot {
+  background: #3b82f6;
+  animation: pulse 1.2s infinite ease-in-out;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.8);
+  }
+}
+
+.badgeCompleted {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.badgeCompleted .badgeDot {
+  background: #10b981;
+}
+
+.badgeFailed {
+  background: rgba(244, 63, 94, 0.12);
+  color: #f43f5e;
+  border: 1px solid rgba(244, 63, 94, 0.25);
+}
+
+.badgeFailed .badgeDot {
+  background: #f43f5e;
+}
+
+.fileActions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.downloadButton {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.65rem;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.downloadButton:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--color-primary);
+}
+
+.downloadButton:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.retryButton {
+  border: 1px solid #f59e0b;
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.65rem;
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.retryButton:hover:not(:disabled) {
+  background: rgba(245, 158, 11, 0.2);
+}
+
+.retryButton:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.deleteButton {
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.65rem;
+  background: transparent;
+  color: var(--color-error);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.deleteButton:hover:not(:disabled) {
+  background: var(--color-error-bg);
+}
+
+.deleteButton:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.emptyState {
+  padding: 1.5rem;
+  text-align: center;
+  color: var(--text-secondary);
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.actionError {
+  margin: 0.35rem 0 0 0;
+  color: var(--color-error);
+  font-size: 0.75rem;
+}
+
+@media (max-width: 600px) {
+  .fileItem {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .fileActions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+}

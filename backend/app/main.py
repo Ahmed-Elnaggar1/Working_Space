@@ -1,0 +1,98 @@
+import uuid
+from fastapi import FastAPI, Request, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+from app.auth.routes import router as auth_router
+from app.bot.routes import router as bot_router
+from app.channels.routes import router as channels_router
+from app.chat.routes import router as chat_router
+from app.files.routes import router as files_router
+from app.workspaces.routes import router as workspaces_router
+
+app = FastAPI(title="Vault API", version="0.1.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Register routers
+app.include_router(auth_router)
+app.include_router(workspaces_router)
+app.include_router(channels_router)
+app.include_router(bot_router)
+app.include_router(chat_router)
+app.include_router(files_router)
+
+# Global Exception Handlers to match API.md contract
+@app.exception_handler(StarletteHTTPException)
+async def custom_http_exception_handler(request: Request, exc: StarletteHTTPException):
+    code_map = {
+        400: "BAD_REQUEST",
+        401: "UNAUTHORIZED",
+        403: "FORBIDDEN",
+        404: "NOT_FOUND",
+        409: "CONFLICT",
+        422: "VALIDATION_ERROR",
+        500: "INTERNAL_SERVER_ERROR",
+        502: "BAD_GATEWAY",
+        503: "SERVICE_UNAVAILABLE",
+        504: "GATEWAY_TIMEOUT",
+    }
+    code = code_map.get(exc.status_code, "ERROR")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": {
+                "code": code,
+                "message": exc.detail,
+                "request_id": str(uuid.uuid4()),
+            }
+        },
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={
+            "error": {
+                "code": "VALIDATION_ERROR",
+                "message": "Validation failed",
+                "details": exc.errors(),
+                "request_id": str(uuid.uuid4()),
+            }
+        },
+    )
+
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "error": {
+                "code": "INTERNAL_SERVER_ERROR",
+                "message": "An unexpected error occurred.",
+                "request_id": str(uuid.uuid4()),
+            }
+        },
+    )
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
+

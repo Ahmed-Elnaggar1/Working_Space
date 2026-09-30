@@ -1,0 +1,11 @@
+.dist
+.env
+__pycache__/
+*.pyc
+.venv/
+.local_storage/
+node_modules/
+.next/
+*.log
+.venv
+

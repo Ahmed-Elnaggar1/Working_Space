@@ -1,0 +1,358 @@
+from collections.abc import Generator
+from uuid import UUID, uuid4
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from app.auth.dependencies import CurrentUser, DEV_USER_ID, get_current_user
+from app.core import Base, get_db
+from app.main import app
+from app.models import Membership, Role
+from tests.async_session_adapter import AsyncSessionAdapter
+
+
+@pytest.fixture
+def client() -> Generator[TestClient, None, None]:
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    session_factory = sessionmaker(bind=engine)
+
+    def override_get_db() -> Generator[Session, None, None]:
+        with session_factory() as session:
+            yield AsyncSessionAdapter(session)
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(id=DEV_USER_ID)
+    app.state.test_session_factory = session_factory
+    with TestClient(app) as test_client:
+        yield test_client
+    app.dependency_overrides.clear()
+
+
+def create_workspace(client: TestClient) -> str:
+    response = client.post(
+        "/workspaces",
+        json={"name": "Engineering"},
+        headers={"Authorization": "Bearer dev-token"},
+    )
+    assert response.status_code == 201
+    return response.json()["id"]
+
+
+def test_create_channel_creates_owner_membership(client: TestClient) -> None:
+    workspace_id = create_workspace(client)
+
+    response = client.post(
+        f"/workspaces/{workspace_id}/channels",
+        json={"name": "Backend"},
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["name"] == "Backend"
+    assert body["workspace_id"] == workspace_id
+
+    with app.state.test_session_factory() as session:
+        membership = (
+            session.query(Membership)
+            .filter_by(channel_id=UUID(body["id"]))
+            .one()
+        )
+        assert membership.user_id == DEV_USER_ID
+        assert membership.channel_id == UUID(body["id"])
+        assert membership.role == Role.OWNER.value
+
+
+def test_duplicate_channel_name_returns_conflict(client: TestClient) -> None:
+    workspace_id = create_workspace(client)
+    payload = {"name": "Backend"}
+
+    first = client.post(f"/workspaces/{workspace_id}/channels", json=payload)
+    second = client.post(f"/workspaces/{workspace_id}/channels", json=payload)
+
+    assert first.status_code == 201
+    assert second.status_code == 409
+
+
+def test_non_owner_cannot_create_channel(client: TestClient) -> None:
+    workspace_id = create_workspace(client)
+    other_user_id = uuid4()
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(id=other_user_id)
+
+    response = client.post(
+        f"/workspaces/{workspace_id}/channels",
+        json={"name": "Backend"},
+    )
+
+    assert response.status_code == 403
+
+
+def test_member_can_get_channel_but_non_member_cannot(client: TestClient) -> None:
+    workspace_id = create_workspace(client)
+    created = client.post(
+        f"/workspaces/{workspace_id}/channels",
+        json={"name": "Backend"},
+    )
+    channel_id = created.json()["id"]
+
+    assert client.get(f"/channels/{channel_id}").status_code == 200
+
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(id=uuid4())
+    response = client.get(f"/channels/{channel_id}")
+
+    assert response.status_code == 404
+
+
+def test_unknown_channel_returns_not_found(client: TestClient) -> None:
+    response = client.get(f"/channels/{uuid4()}")
+
+    assert response.status_code == 404
+
+
+def test_read_only_member_can_list_channel_members(client: TestClient) -> None:
+    workspace_id = create_workspace(client)
+    with app.state.test_session_factory() as session:
+        from app.models import User
+
+        session.add(User(id=DEV_USER_ID, email="owner@example.com", password_hash="dummy"))
+        session.commit()
+
+    created = client.post(f"/workspaces/{workspace_id}/channels", json={"name": "Backend"})
+    channel_id = created.json()["id"]
+
+    member_id = uuid4()
+    with app.state.test_session_factory() as session:
+        from app.models import User
+
+        session.add(User(id=member_id, email="readonly@example.com", password_hash="dummy"))
+        session.add(Membership(user_id=member_id, channel_id=UUID(channel_id), role=Role.READ_ONLY.value))
+        session.commit()
+
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(id=member_id)
+    response = client.get(f"/channels/{channel_id}/members")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) >= 2
+    roles = {item["role"] for item in body}
+    assert Role.OWNER.value in roles
+    assert Role.READ_ONLY.value in roles
+    assert any(item["email"] == "readonly@example.com" for item in body)
+
+
+def test_non_member_cannot_list_channel_members(client: TestClient) -> None:
+    workspace_id = create_workspace(client)
+    created = client.post(f"/workspaces/{workspace_id}/channels", json={"name": "Backend"})
+    channel_id = created.json()["id"]
+
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(id=uuid4())
+    response = client.get(f"/channels/{channel_id}/members")
+
+    assert response.status_code == 404
+
+
+def test_add_channel_member_by_email_success(client: TestClient) -> None:
+    workspace_id = create_workspace(client)
+    created = client.post(f"/workspaces/{workspace_id}/channels", json={"name": "Backend"})
+    channel_id = created.json()["id"]
+
+    new_user_id = uuid4()
+    with app.state.test_session_factory() as session:
+        from app.models import User
+        new_user = User(id=new_user_id, email="newuser@example.com", password_hash="dummy")
+        session.add(new_user)
+        session.commit()
+
+    response = client.post(
+        f"/channels/{channel_id}/members",
+        json={"email": "newuser@example.com", "role": "member"},
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["user_id"] == str(new_user_id)
+    assert body["channel_id"] == channel_id
+    assert body["role"] == "member"
+
+
+def test_add_channel_member_success(client: TestClient) -> None:
+    workspace_id = create_workspace(client)
+    created = client.post(f"/workspaces/{workspace_id}/channels", json={"name": "Backend"})
+    channel_id = created.json()["id"]
+
+    # Create another user in DB
+    new_user_id = uuid4()
+    with app.state.test_session_factory() as session:
+        from app.models import User
+        new_user = User(id=new_user_id, email="newuser@example.com", password_hash="dummy")
+        session.add(new_user)
+        session.commit()
+
+    # Admin/Owner adds the new user as member
+    response = client.post(
+        f"/channels/{channel_id}/members",
+        json={"user_id": str(new_user_id), "role": "member"},
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["user_id"] == str(new_user_id)
+    assert body["channel_id"] == channel_id
+    assert body["role"] == "member"
+
+
+def test_unknown_channel_member_email_returns_not_found(client: TestClient) -> None:
+    workspace_id = create_workspace(client)
+    created = client.post(f"/workspaces/{workspace_id}/channels", json={"name": "Backend"})
+    channel_id = created.json()["id"]
+
+    response = client.post(
+        f"/channels/{channel_id}/members",
+        json={"email": "missing@example.com", "role": "member"},
+    )
+
+    assert response.status_code == 404
+    payload = response.json()
+    assert payload["error"]["code"] == "NOT_FOUND"
+    assert payload["error"]["message"] == "User not found"
+
+
+def test_duplicate_channel_member_returns_conflict(client: TestClient) -> None:
+    workspace_id = create_workspace(client)
+    created = client.post(f"/workspaces/{workspace_id}/channels", json={"name": "Backend"})
+    channel_id = created.json()["id"]
+    member_id = uuid4()
+
+    with app.state.test_session_factory() as session:
+        from app.models import User
+
+        session.add(User(id=member_id, email="duplicate@example.com", password_hash="dummy"))
+        session.commit()
+
+    payload = {"user_id": str(member_id), "role": "member"}
+    first = client.post(f"/channels/{channel_id}/members", json=payload)
+    second = client.post(f"/channels/{channel_id}/members", json=payload)
+
+    assert first.status_code == 201
+    assert second.status_code == 409
+
+
+def test_duplicate_channel_member_by_email_returns_conflict(client: TestClient) -> None:
+    workspace_id = create_workspace(client)
+    created = client.post(f"/workspaces/{workspace_id}/channels", json={"name": "Backend"})
+    channel_id = created.json()["id"]
+    member_id = uuid4()
+
+    with app.state.test_session_factory() as session:
+        from app.models import User
+
+        session.add(User(id=member_id, email="duplicate@example.com", password_hash="dummy"))
+        session.commit()
+
+    payload = {"email": "duplicate@example.com", "role": "member"}
+    first = client.post(f"/channels/{channel_id}/members", json=payload)
+    second = client.post(f"/channels/{channel_id}/members", json=payload)
+
+    assert first.status_code == 201
+    assert second.status_code == 409
+
+
+def test_add_channel_member_denied_for_member(client: TestClient) -> None:
+    workspace_id = create_workspace(client)
+    created = client.post(f"/workspaces/{workspace_id}/channels", json={"name": "Backend"})
+    channel_id = created.json()["id"]
+
+    # Make current user a normal member (not owner/admin)
+    member_user_id = uuid4()
+    with app.state.test_session_factory() as session:
+        from app.models import User
+        member_user = User(id=member_user_id, email="memberuser@example.com", password_hash="dummy")
+        session.add(member_user)
+        session.flush()
+
+        # Remove default owner membership and replace with member role
+        session.query(Membership).filter_by(channel_id=UUID(channel_id)).delete()
+        session.add(Membership(user_id=member_user_id, channel_id=UUID(channel_id), role="member"))
+        session.commit()
+
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(id=member_user_id)
+
+    # Try to add a new member as a restricted role
+    response = client.post(
+        f"/channels/{channel_id}/members",
+        json={"user_id": str(uuid4()), "role": "member"},
+    )
+    assert response.status_code == 403
+
+
+def test_update_channel_member_role_success(client: TestClient) -> None:
+    workspace_id = create_workspace(client)
+    created = client.post(f"/workspaces/{workspace_id}/channels", json={"name": "Backend"})
+    channel_id = created.json()["id"]
+
+    # Add a member
+    member_id = uuid4()
+    with app.state.test_session_factory() as session:
+        from app.models import User
+        u = User(id=member_id, email="member@example.com", password_hash="dummy")
+        session.add(u)
+        session.flush()
+        session.add(Membership(user_id=member_id, channel_id=UUID(channel_id), role="member"))
+        session.commit()
+
+    # Update role to read_only
+    response = client.patch(
+        f"/channels/{channel_id}/members/{member_id}",
+        json={"role": "read_only"},
+    )
+    assert response.status_code == 200
+    assert response.json()["role"] == "read_only"
+
+
+def test_last_owner_cannot_be_demoted_or_removed(client: TestClient) -> None:
+    workspace_id = create_workspace(client)
+    created = client.post(f"/workspaces/{workspace_id}/channels", json={"name": "Backend"})
+    channel_id = created.json()["id"]
+
+    demote_response = client.patch(
+        f"/channels/{channel_id}/members/{DEV_USER_ID}",
+        json={"role": "member"},
+    )
+    remove_response = client.delete(f"/channels/{channel_id}/members/{DEV_USER_ID}")
+
+    assert demote_response.status_code == 409
+    assert remove_response.status_code == 409
+
+
+def test_delete_channel_member_success_denies_subsequent_access(client: TestClient) -> None:
+    workspace_id = create_workspace(client)
+    created = client.post(f"/workspaces/{workspace_id}/channels", json={"name": "Backend"})
+    channel_id = created.json()["id"]
+
+    # Add a member
+    member_id = uuid4()
+    with app.state.test_session_factory() as session:
+        from app.models import User
+        u = User(id=member_id, email="member@example.com", password_hash="dummy")
+        session.add(u)
+        session.flush()
+        session.add(Membership(user_id=member_id, channel_id=UUID(channel_id), role="member"))
+        session.commit()
+
+    # Check member can access
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(id=member_id)
+    assert client.get(f"/channels/{channel_id}").status_code == 200
+
+    # Owner removes member
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(id=DEV_USER_ID)
+    response = client.delete(f"/channels/{channel_id}/members/{member_id}")
+    assert response.status_code == 204
+
+    # Verification: member should now be denied access (returns 404 due to confidentiality)
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(id=member_id)
+    assert client.get(f"/channels/{channel_id}").status_code == 404
