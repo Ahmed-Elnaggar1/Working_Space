@@ -13,6 +13,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const accessTokenRef = useRef<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const restoreAttemptedRef = useRef(false);
 
   function setAccessToken(token: string | null) {
     accessTokenRef.current = token;
@@ -20,6 +21,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setTokenProvider(() => accessTokenRef.current);
+
+    if (restoreAttemptedRef.current) {
+      return;
+    }
+    restoreAttemptedRef.current = true;
 
     async function restoreSession() {
       try {
