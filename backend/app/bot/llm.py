@@ -8,8 +8,7 @@ from app.core.config import get_settings
 INSUFFICIENT_EVIDENCE_MESSAGE = "Insufficient evidence in this channel to answer the question."
 RAG_PROMPT_TEMPLATE = (
     "You are a helpful assistant answering questions strictly based on the provided channel materials.\n"
-    "Answer the question using only the facts in the context.\n"
-    "CRITICAL REQUIREMENT: Whenever you state a fact, you MUST cite the page number it came from using brackets, like this: [Page 1].\n"
+    "Answer the question using only the facts in the context. Cite the file name and page number for facts.\n"
     "If the context does not contain sufficient information to answer the question, say so clearly.\n\n"
     "Context:\n{context}\n\n"
     "Question: {question}"
@@ -240,19 +239,12 @@ def generate_answer(
     raw_answer = llm_client.generate_response(question, chunks)
     seen = set()
     citations = []
-    
     for chunk in chunks:
         file_id = str(chunk["file_id"])
         file_name = chunk["file_name"]
         page = chunk["page_number"]
         key = (file_id, file_name, page)
-        
-        # Check if the AI actually cited this page in its answer using the requested format
-        # We check both [Page X] and just the raw page number to be safe since small models are stubborn.
-        citation_format_1 = f"[Page {page}]"
-        citation_format_2 = f"page {page}"
-        
-        if (citation_format_1.lower() in raw_answer.lower() or citation_format_2.lower() in raw_answer.lower()) and key not in seen:
+        if key not in seen:
             seen.add(key)
             citations.append(
                 {
@@ -261,24 +253,6 @@ def generate_answer(
                     "page": page,
                 }
             )
-
-    # Fallback: if the AI completely ignored formatting rules but still answered the question, 
-    # we default back to showing all chunks as citations to avoid an empty sources list.
-    if not citations and raw_answer != INSUFFICIENT_EVIDENCE_MESSAGE:
-        for chunk in chunks:
-            file_id = str(chunk["file_id"])
-            file_name = chunk["file_name"]
-            page = chunk["page_number"]
-            key = (file_id, file_name, page)
-            if key not in seen:
-                seen.add(key)
-                citations.append(
-                    {
-                        "file_id": file_id,
-                        "file_name": file_name,
-                        "page": page,
-                    }
-                )
 
     return {
         "answer": raw_answer,
