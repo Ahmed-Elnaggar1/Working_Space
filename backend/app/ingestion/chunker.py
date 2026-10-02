@@ -1,46 +1,37 @@
 import re
-
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 def _detect_heading(line: str) -> str | None:
     """Detects if a single line looks like a section heading."""
     stripped = line.strip()
     if not stripped:
         return None
-    # Markdown headings (# Heading, ## Subheading)
     if stripped.startswith("#"):
         return stripped.lstrip("#").strip()
-    # Explicit Section / Chapter headers (e.g. 'Section 1: Intro', 'Chapter 2')
     if re.match(r"^(section|chapter|part)\s+\d+[:.]?", stripped, re.IGNORECASE):
         return stripped
-    # Short all-caps headings (e.g. 'INTRODUCTION', 'OVERVIEW')
     if stripped.isupper() and 3 <= len(stripped) <= 60 and not stripped.endswith("."):
         return stripped
     return None
 
-
 def chunk_parsed_content(
     pages_content: list[tuple[int, str]],
-    max_words: int = 350,
-    overlap: int = 50,
+    chunk_size: int = 2000,
+    chunk_overlap: int = 200,
 ) -> list[dict]:
-    """Splits parsed text from pages into chunks.
+    """Splits parsed text from pages into chunks using LangChain's RecursiveCharacterTextSplitter.
     
     Ensures that each chunk is associated with the page number and section it originated from.
-    Each chunk has approximately `max_words` words, with `overlap` words shared
-    between successive chunks of the same page.
-    
-    Returns a list of dicts:
-        [
-            {
-                "page_number": int,
-                "section": str | None,
-                "content": str
-            },
-            ...
-        ]
     """
     chunks = []
     current_section: str | None = None
+
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        length_function=len,
+        is_separator_regex=False,
+    )
 
     for page_num, text in pages_content:
         # Check lines on the page for section headings
@@ -51,32 +42,16 @@ def chunk_parsed_content(
                 current_section = heading
                 break
 
-        words = text.split()
-        if not words:
-            continue
-
-        i = 0
-        while i < len(words):
-            # Take a slice of words
-            chunk_words = words[i : i + max_words]
-            chunk_text = " ".join(chunk_words)
-            
+        page_chunks = text_splitter.split_text(text)
+        
+        for chunk_text in page_chunks:
+            if not chunk_text.strip():
+                continue
+                
             chunks.append({
                 "page_number": page_num,
                 "section": current_section,
                 "content": chunk_text,
             })
-            
-            # Step forward by (max_words - overlap)
-            i += max_words - overlap
-            
-            # Prevent infinite loops if overlap >= max_words (sanity check)
-            if max_words - overlap <= 0:
-                break
-
-            # If we've processed all words, or the current slice was smaller
-            # than max_words (reached the end), we can stop.
-            if i >= len(words) or len(chunk_words) < max_words:
-                break
 
     return chunks
