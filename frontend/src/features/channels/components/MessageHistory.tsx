@@ -274,7 +274,7 @@ export function MessageHistory({
     if (!member) {
       return userId;
     }
-    return userId === currentUserId ? `${member.email} (You)` : member.email;
+    return member.username ?? member.email;
   }
 
   return (

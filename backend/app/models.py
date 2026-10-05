@@ -46,6 +46,7 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[UUID] = mapped_column(GUID(), primary_key=True, default=uuid4)
+    username: Mapped[str | None] = mapped_column(String(50), unique=True, nullable=True)
     email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
@@ -169,5 +170,3 @@ class Message(Base):
 
     channel: Mapped[Channel] = relationship(back_populates="messages")
     user: Mapped[User] = relationship()
-
-

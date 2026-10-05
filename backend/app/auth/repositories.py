@@ -14,11 +14,19 @@ class UserRepository:
     async def get_by_email(self, email: str) -> User | None:
         return await self.db.scalar(select(User).where(User.email == email))
 
+    async def get_by_username(self, username: str) -> User | None:
+        return await self.db.scalar(select(User).where(User.username == username))
+
     async def get_by_id(self, user_id: UUID) -> User | None:
         return await self.db.scalar(select(User).where(User.id == user_id))
 
-    async def create(self, email: str, password_hash: str) -> User:
-        user = User(email=email, password_hash=password_hash)
+    async def create(
+        self,
+        email: str,
+        password_hash: str,
+        username: str | None = None,
+    ) -> User:
+        user = User(username=username, email=email, password_hash=password_hash)
         self.db.add(user)
         await self.db.flush()
         return user

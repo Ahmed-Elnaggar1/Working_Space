@@ -12,7 +12,11 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  async function handleSubmit(input: { email: string; password: string }) {
+  async function handleSubmit(input: {
+    username: string;
+    email: string;
+    password: string;
+  }) {
     setError(null);
     setIsSubmitting(true);
     try {

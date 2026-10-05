@@ -42,15 +42,21 @@ class AuthService:
         self.token_repo = RefreshTokenRepository(db)
 
     async def register(self, payload: UserRegister) -> User:
+        username = (payload.username or payload.email.split("@", 1)[0]).strip()
         email = payload.email.strip().lower()
 
         if await self.user_repo.get_by_email(email):
             raise UserAlreadyExistsError(
                 "A user with this email already exists."
             )
+        if await self.user_repo.get_by_username(username):
+            raise UserAlreadyExistsError(
+                "A user with this username already exists."
+            )
 
         try:
             user = await self.user_repo.create(
+                username=username,
                 email=email,
                 password_hash=hash_password(payload.password),
             )

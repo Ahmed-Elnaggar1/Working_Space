@@ -10,6 +10,7 @@ export type ChannelMemberRole = "owner" | "admin" | "member" | "read_only";
 export interface ChannelMember {
   id: string;
   user_id: string;
+  username?: string;
   email: string;
   channel_id: string;
   role: ChannelMemberRole;
