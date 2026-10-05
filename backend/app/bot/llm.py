@@ -6,12 +6,10 @@ from app.core.config import get_settings
 
 
 INSUFFICIENT_EVIDENCE_MESSAGE = "Insufficient evidence in this channel to answer the question."
-RAG_PROMPT_TEMPLATE = (
-    "You are a helpful assistant answering questions strictly based on the provided channel materials.\n"
-    "Answer the question using only the facts in the context. Cite the file name and page number for facts.\n"
-    "If the context does not contain sufficient information to answer the question, say so clearly.\n\n"
-    "Context:\n{context}\n\n"
-    "Question: {question}"
+SYSTEM_PROMPT = (
+    "You are a helpful assistant answering questions based on the provided channel materials and conversation history.\n"
+    "Answer questions using only the facts in the provided context or previous messages. "
+    "If the context and history do not contain sufficient information to answer a question, say so clearly."
 )
 
 
@@ -105,13 +103,16 @@ class ClaudeClient:
         if not chunks and not history:
             return INSUFFICIENT_EVIDENCE_MESSAGE
 
-        context = build_context(chunks)
-        prompt = RAG_PROMPT_TEMPLATE.format(context=context, question=question)
-        
         messages = []
         if history:
             messages.extend(history)
-        messages.append({"role": "user", "content": prompt})
+
+        if chunks:
+            context = build_context(chunks)
+            prompt = f"Context:\n{context}\n\nQuestion: {question}"
+            messages.append({"role": "user", "content": prompt})
+        else:
+            messages.append({"role": "user", "content": question})
 
         headers = {
             "x-api-key": self.api_key,
@@ -121,6 +122,7 @@ class ClaudeClient:
         payload = {
             "model": self.model_name,
             "max_tokens": 1024,
+            "system": SYSTEM_PROMPT,
             "messages": messages,
         }
 
@@ -167,13 +169,16 @@ class OllamaClient:
         if not chunks and not history:
             return INSUFFICIENT_EVIDENCE_MESSAGE
 
-        context = build_context(chunks)
-        prompt = RAG_PROMPT_TEMPLATE.format(context=context, question=question)
-
-        messages = []
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
         if history:
             messages.extend(history)
-        messages.append({"role": "user", "content": prompt})
+
+        if chunks:
+            context = build_context(chunks)
+            prompt = f"Context:\n{context}\n\nQuestion: {question}"
+            messages.append({"role": "user", "content": prompt})
+        else:
+            messages.append({"role": "user", "content": question})
 
         try:
             with httpx.Client(timeout=self.timeout) as client:
