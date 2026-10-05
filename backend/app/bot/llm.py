@@ -76,7 +76,7 @@ class PlaceholderLLMClient:
     model_name = "placeholder-local-model"
 
     def generate_response(self, question: str, chunks: list[dict], history: list[dict] | None = None) -> str:
-        if not chunks:
+        if not chunks and not history:
             return INSUFFICIENT_EVIDENCE_MESSAGE
 
         context = build_context(chunks)
@@ -102,7 +102,7 @@ class ClaudeClient:
         self.timeout = settings.LLM_TIMEOUT_SECONDS or timeout
 
     def generate_response(self, question: str, chunks: list[dict], history: list[dict] | None = None) -> str:
-        if not chunks:
+        if not chunks and not history:
             return INSUFFICIENT_EVIDENCE_MESSAGE
 
         context = build_context(chunks)
@@ -164,7 +164,7 @@ class OllamaClient:
         self.timeout = settings.LLM_TIMEOUT_SECONDS or timeout
 
     def generate_response(self, question: str, chunks: list[dict], history: list[dict] | None = None) -> str:
-        if not chunks:
+        if not chunks and not history:
             return INSUFFICIENT_EVIDENCE_MESSAGE
 
         context = build_context(chunks)
@@ -236,7 +236,7 @@ def generate_answer(
     if llm_client is None:
         llm_client = build_llm_client()
 
-    if not chunks:
+    if not chunks and not history:
         return {
             "answer": INSUFFICIENT_EVIDENCE_MESSAGE,
             "citations": [],
