@@ -148,8 +148,10 @@ export function deleteChannelFile(
 export function askChannel(
   channelId: string,
   question: string,
+  history?: { role: string; content: string }[],
 ): Promise<AskChannelResponse> {
   return api.post<AskChannelResponse>(`/channels/${channelId}/ask`, {
     question,
+    history,
   });
 }

@@ -18,7 +18,7 @@ RAG_PROMPT_TEMPLATE = (
 class LLMClient(Protocol):
     model_name: str
 
-    def generate_response(self, question: str, chunks: list[dict]) -> str:
+    def generate_response(self, question: str, chunks: list[dict], history: list[dict] | None = None) -> str:
         ...
 
 
@@ -75,7 +75,7 @@ class PlaceholderLLMClient:
 
     model_name = "placeholder-local-model"
 
-    def generate_response(self, question: str, chunks: list[dict]) -> str:
+    def generate_response(self, question: str, chunks: list[dict], history: list[dict] | None = None) -> str:
         if not chunks:
             return INSUFFICIENT_EVIDENCE_MESSAGE
 
@@ -101,12 +101,17 @@ class ClaudeClient:
         self.base_url = (base_url or settings.ANTHROPIC_BASE_URL).rstrip("/")
         self.timeout = settings.LLM_TIMEOUT_SECONDS or timeout
 
-    def generate_response(self, question: str, chunks: list[dict]) -> str:
+    def generate_response(self, question: str, chunks: list[dict], history: list[dict] | None = None) -> str:
         if not chunks:
             return INSUFFICIENT_EVIDENCE_MESSAGE
 
         context = build_context(chunks)
         prompt = RAG_PROMPT_TEMPLATE.format(context=context, question=question)
+        
+        messages = []
+        if history:
+            messages.extend(history)
+        messages.append({"role": "user", "content": prompt})
 
         headers = {
             "x-api-key": self.api_key,
@@ -116,7 +121,7 @@ class ClaudeClient:
         payload = {
             "model": self.model_name,
             "max_tokens": 1024,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
         }
 
         try:
@@ -158,12 +163,17 @@ class OllamaClient:
         self.base_url = (base_url or settings.OLLAMA_BASE_URL).rstrip("/")
         self.timeout = settings.LLM_TIMEOUT_SECONDS or timeout
 
-    def generate_response(self, question: str, chunks: list[dict]) -> str:
+    def generate_response(self, question: str, chunks: list[dict], history: list[dict] | None = None) -> str:
         if not chunks:
             return INSUFFICIENT_EVIDENCE_MESSAGE
 
         context = build_context(chunks)
         prompt = RAG_PROMPT_TEMPLATE.format(context=context, question=question)
+
+        messages = []
+        if history:
+            messages.extend(history)
+        messages.append({"role": "user", "content": prompt})
 
         try:
             with httpx.Client(timeout=self.timeout) as client:
@@ -172,7 +182,7 @@ class OllamaClient:
                         client,
                         {
                             "model": self.model_name,
-                            "messages": [{"role": "user", "content": prompt}],
+                            "messages": messages,
                             "stream": False,
                         },
                     ),
@@ -220,6 +230,7 @@ def get_llm_api_key() -> str:
 def generate_answer(
     question: str,
     chunks: list[dict],
+    history: list[dict] | None = None,
     llm_client: LLMClient | None = None,
 ) -> dict:
     if llm_client is None:
@@ -236,7 +247,7 @@ def generate_answer(
         if "file_name" not in chunk or "page_number" not in chunk:
             raise ValueError("Each chunk must include file metadata and page number.")
 
-    raw_answer = llm_client.generate_response(question, chunks)
+    raw_answer = llm_client.generate_response(question, chunks, history)
     seen = set()
     citations = []
     for chunk in chunks:
