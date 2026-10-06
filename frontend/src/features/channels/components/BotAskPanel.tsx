@@ -96,7 +96,14 @@ export function BotAskPanel({ channelId }: BotAskPanelProps) {
     }, LONG_WAIT_THRESHOLD_MS);
 
     try {
-      const response = await askChannel(channelId, trimmed);
+      const apiHistory = history.flatMap(item => {
+        const msgs = [{ role: "user", content: item.question }];
+        if (item.answer) {
+          msgs.push({ role: "assistant", content: item.answer });
+        }
+        return msgs;
+      });
+      const response = await askChannel(channelId, trimmed, apiHistory);
 
       setHistory((prev) =>
         prev.map((item) => {
