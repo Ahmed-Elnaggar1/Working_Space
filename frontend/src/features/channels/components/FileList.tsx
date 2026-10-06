@@ -133,7 +133,7 @@ export function FileList({
     const isCurrentUser = currentUserId && uploadedBy === currentUserId;
 
     if (member) {
-      return isCurrentUser ? `${member.email} (You)` : member.email;
+      return member.username ?? member.email;
     }
 
     return isCurrentUser ? `${uploadedBy} (You)` : uploadedBy;

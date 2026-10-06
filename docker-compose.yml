@@ -47,6 +47,8 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: ${DATABASE_URL}
+      LLM_PROVIDER: ${LLM_PROVIDER}
+      OLLAMA_MODEL: ${OLLAMA_MODEL}
       # Override local .env to point to the docker network ollama
       OLLAMA_BASE_URL: http://ollama:11434
     volumes:

@@ -1,5 +1,6 @@
 export interface User {
   id: string;
+  username: string;
   email: string;
   created_at: string;
 }
@@ -15,6 +16,7 @@ export interface AuthUserResponse {
 }
 
 export interface SignupInput {
+  username: string;
   email: string;
   password: string;
 }
