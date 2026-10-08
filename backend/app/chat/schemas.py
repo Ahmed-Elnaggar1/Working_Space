@@ -29,3 +29,7 @@ class MessageResponse(BaseModel):
 class MessagePage(BaseModel):
     items: list[MessageResponse]
     next_cursor: str | None = None
+
+class ThreadResponse(BaseModel):
+    parent: MessageResponse
+    items: list[MessageResponse]
