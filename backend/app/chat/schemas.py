@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 class MessageCreate(BaseModel):
     content: str = Field(min_length=1, max_length=4000)
+    parent_message_id: UUID | None = None
 
 
 class MessageResponse(BaseModel):
@@ -15,6 +16,7 @@ class MessageResponse(BaseModel):
     channel_id: UUID
     user_id: UUID
     content: str
+    parent_message_id: UUID | None = None
     created_at: datetime
 
     @field_serializer("created_at")

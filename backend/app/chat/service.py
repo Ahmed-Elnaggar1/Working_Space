@@ -1,8 +1,10 @@
 from uuid import UUID
 
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.chat.mentions import extract_mention_usernames, resolve_channel_mentions
+from app.chat.repositories import MessageRepository, NotificationRepository
 from app.chat.schemas import MessageCreate
 from app.models import Mention, Message, Notification
 
@@ -12,44 +14,70 @@ async def persist_message(
     user_id: UUID,
     payload: MessageCreate,
 ) -> Message:
-    # 1. Create and add the message
-    message = Message(
+    message_repo = MessageRepository(db)
+    notif_repo = NotificationRepository(db)
+
+    # 1. Validate parent message if thread reply
+    parent_msg = None
+    if payload.parent_message_id:
+        parent_msg = await message_repo.get_by_id(payload.parent_message_id)
+        if not parent_msg or parent_msg.channel_id != channel_id:
+            raise HTTPException(status_code=400, detail="Parent message not found in this channel")
+        if parent_msg.parent_message_id is not None:
+            raise HTTPException(status_code=400, detail="Nested thread replies are not permitted")
+
+    # 2. Create message
+    message = await message_repo.create(
         channel_id=channel_id,
         user_id=user_id,
         content=payload.content,
+        parent_message_id=payload.parent_message_id,
     )
-    db.add(message)
-    
-    # 2. Flush to populate message.id WITHOUT committing the transaction yet
-    await db.flush()
 
-    # 3. Extract candidate usernames from the message content
+    # 3. Handle mentions (S11-03 / S11-04)
     candidate_usernames = extract_mention_usernames(payload.content)
-
-    # 4. Resolve candidate usernames against channel memberships
     resolved_mentions = await resolve_channel_mentions(
         db, channel_id, user_id, candidate_usernames
     )
+    
+    # Track who received a mention notification to avoid duplicate thread notifications
+    mentioned_user_ids = set(resolved_mentions.values())
+    notifications_to_create = []
 
-    # 5. Create Mention and Notification rows
-    # Since your resolve_channel_mentions returns a dict {username: user_id},
-    # we iterate over .values() to get each mentioned user_id:
-    for mentioned_user_id in resolved_mentions.values():
-        mention = Mention(
-            message_id=message.id,
-            mentioned_user_id=mentioned_user_id,
+    for mentioned_id in mentioned_user_ids:
+        db.add(Mention(message_id=message.id, mentioned_user_id=mentioned_id))
+        notifications_to_create.append(
+            Notification(
+                user_id=mentioned_id,
+                actor_id=user_id,
+                channel_id=channel_id,
+                message_id=message.id,
+                type="mention",
+            )
         )
-        notification = Notification(
-            user_id=mentioned_user_id,
-            actor_id=user_id,
-            channel_id=channel_id,
-            message_id=message.id,
-            type="mention",
-        )
-        db.add(mention)
-        db.add(notification)
 
-    # 6. Commit the entire transaction atomically (message + mentions + notifications)
+    # 4. Handle thread reply notifications (S11-07)
+    if payload.parent_message_id and parent_msg:
+        participants = await message_repo.get_thread_participant_ids(parent_msg)
+        # Exclude:
+        # - The current sender (no self-notifications)
+        # - Users already notified via mention in this message
+        thread_recipients = participants - {user_id} - mentioned_user_ids
+
+        for recipient_id in thread_recipients:
+            notifications_to_create.append(
+                Notification(
+                    user_id=recipient_id,
+                    actor_id=user_id,
+                    channel_id=channel_id,
+                    message_id=message.id,
+                    type="thread_reply",
+                )
+            )
+
+    if notifications_to_create:
+        notif_repo.add_many(notifications_to_create)
+
     await db.commit()
     await db.refresh(message)
     return message
