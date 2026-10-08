@@ -1,4 +1,5 @@
-from uuid import UUID
+from datetime import datetime, timezone
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,6 +8,8 @@ from app.chat.mentions import extract_mention_usernames, resolve_channel_mention
 from app.chat.repositories import MessageRepository, NotificationRepository
 from app.chat.schemas import MessageCreate
 from app.models import Mention, Message, Notification
+from app.notifications.manager import notification_manager
+
 
 async def persist_message(
     db: AsyncSession,
@@ -48,11 +51,13 @@ async def persist_message(
         db.add(Mention(message_id=message.id, mentioned_user_id=mentioned_id))
         notifications_to_create.append(
             Notification(
+                id=uuid4(),
                 user_id=mentioned_id,
                 actor_id=user_id,
                 channel_id=channel_id,
                 message_id=message.id,
                 type="mention",
+                created_at=datetime.now(timezone.utc),
             )
         )
 
@@ -67,11 +72,13 @@ async def persist_message(
         for recipient_id in thread_recipients:
             notifications_to_create.append(
                 Notification(
+                    id=uuid4(),
                     user_id=recipient_id,
                     actor_id=user_id,
                     channel_id=channel_id,
                     message_id=message.id,
                     type="thread_reply",
+                    created_at=datetime.now(timezone.utc),
                 )
             )
 
@@ -80,4 +87,19 @@ async def persist_message(
 
     await db.commit()
     await db.refresh(message)
+
+    # Real-time WebSocket push (S11-08)
+    for notif in notifications_to_create:
+        notif_payload = {
+            "id": str(notif.id),
+            "user_id": str(notif.user_id),
+            "actor_id": str(notif.actor_id),
+            "channel_id": str(notif.channel_id),
+            "message_id": str(notif.message_id),
+            "type": notif.type,
+            "is_read": notif.is_read,
+            "created_at": notif.created_at.isoformat(),
+        }
+        await notification_manager.send_to_user(notif.user_id, notif_payload)
+
     return message

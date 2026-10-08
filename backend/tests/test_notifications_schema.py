@@ -1,4 +1,3 @@
-from uuid import uuid4
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.exc import IntegrityError
