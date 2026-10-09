@@ -120,7 +120,7 @@ To trace how data moves through the codebase, follow these step-by-step file int
   - Queries `Chunk` where `Chunk.channel_id == channel_id` and `File.ingestion_status == "completed"`.
   - Calculates lexical similarity (term overlap) between the question and chunk content, returning top-$k$ ranked chunks.
 - **`generate_answer(question, chunks)`**:
-  - Formats retrieved chunks with filenames and page numbers, prompting the LLM (Claude / Ollama / Placeholder) to answer with source citations.
+  - Formats retrieved chunks with filenames and page numbers, prompting the LLM (Claude / Gemini / Placeholder) to answer with source citations.
 
 ---
 

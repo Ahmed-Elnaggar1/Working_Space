@@ -55,7 +55,7 @@ To trace how configuration and database sessions are initialized and consumed, f
   - **Configuration Groups**:
     - **Database**: `DATABASE_URL`, `ENV`.
     - **JWT / Security**: `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `JWT_ACCESS_EXPIRES_IN` (`15m`), `JWT_REFRESH_EXPIRES_IN` (`7d`).
-    - **LLM & Embeddings**: `CLAUDE_MODEL`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_API_KEY`, `LLM_PROVIDER`, `OLLAMA_MODEL`, `OLLAMA_BASE_URL`, `EMBEDDING_DIMENSION` (`384`), `EMBEDDING_MODEL`.
+    - **LLM & Embeddings**: `CLAUDE_MODEL`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_API_KEY`, `LLM_PROVIDER`, `Gemini_MODEL`, `Gemini_BASE_URL`, `EMBEDDING_DIMENSION` (`384`), `EMBEDDING_MODEL`.
     - **Object Storage**: `AWS_ENDPOINT_URL`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME` (`vault-bucket`), `AWS_REGION`.
 - **`use_async_database_driver` Validator**:
   - Intercepts incoming `DATABASE_URL` strings:
@@ -117,7 +117,7 @@ To trace how configuration and database sessions are initialized and consumed, f
 | **All Route Modules** | • Every endpoint injecting a database session uses `Depends(get_db)`. | `app/*/routes.py` |
 | **All Service / Repository Modules** | • Services and repositories receive `db: AsyncSession` to perform atomic queries and transactions. | `app/*/services.py`<br>`app/*/repositories.py` |
 | **Auth Module** | • Consumes `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, and token expiration durations. | [app/auth/security.py](../../backend/app/auth/security.py) |
-| **Bot Module** | • Reads `LLM_PROVIDER`, `CLAUDE_MODEL`, `OLLAMA_MODEL`, and `EMBEDDING_DIMENSION`. | [app/bot/llm.py](../../backend/app/bot/llm.py) |
+| **Bot Module** | • Reads `LLM_PROVIDER`, `CLAUDE_MODEL`, `Gemini_MODEL`, and `EMBEDDING_DIMENSION`. | [app/bot/llm.py](../../backend/app/bot/llm.py) |
 | **Files Module** | • Reads S3 endpoint configurations, bucket name, and AWS credentials. | [app/files/storage.py](../../backend/app/files/storage.py) |
 
 ---

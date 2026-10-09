@@ -8,7 +8,7 @@ Key capabilities include:
 
 1. **Strict Channel Scoping**: Text matching is constrained to the requested `channel_id`, ensuring cross-channel document isolation and confidentiality.
 2. **Hallucination Prevention via Evidence Gating**: Requires at least 30% of meaningful question terms to match a completed chunk. If available context is weak or nonexistent, the system terminates early with a clear `"insufficient_evidence"` indicator instead of allowing the model to hallucinate.
-3. **Pluggable Multi-Provider LLM Engine**: Employs a protocol-based abstraction supporting **Anthropic Claude**, local **Ollama**, and offline **Mock/Placeholder** clients for CI and testing.
+3. **Pluggable Multi-Provider LLM Engine**: Employs a protocol-based abstraction supporting **Anthropic Claude**, local **Gemini**, and offline **Mock/Placeholder** clients for CI and testing.
 4. **Source Citations**: Formats and deduplicates source references down to the document name and page number.
 
 ```mermaid
@@ -32,7 +32,7 @@ flowchart TD
       G -- Yes --> J["Build Prompt Context <br> Source: file (page N)"]
         J --> K{"Selected Provider"}
         K -- claude --> L["ClaudeClient (Anthropic API)"]
-        K -- ollama --> M["OllamaClient (Local Inference)"]
+        K -- Gemini --> M["GeminiClient (Local Inference)"]
         K -- placeholder --> N["PlaceholderLLMClient (Tests)"]
         L & M & N --> O["LLM Response Text"]
     end
@@ -130,7 +130,7 @@ Question: {question}
 
 - **`build_llm_client()` Factory**:
   - **`ClaudeClient`**: Connects via `httpx.Client` to Anthropic's Messages API (`/v1/messages`) using `CLAUDE_MODEL` (`claude-3-5-sonnet`).
-  - **`OllamaClient`**: Connects via `httpx.Client` to local Ollama (`/api/chat`) using `OLLAMA_MODEL` (`qwen2.5:7b-instruct`).
+  - **`GeminiClient`**: Connects via `httpx.Client` to local Gemini (`/api/chat`) using `Gemini_MODEL` (`qwen2.5:7b-instruct`).
   - **`PlaceholderLLMClient`**: Deterministic mock client returning formatted context for testing and development.
 - **Error Translation**:
   - Translates `httpx.TimeoutException` into `LLMTimeoutError` $\rightarrow$ `HTTP 504 Gateway Timeout`.
@@ -168,7 +168,7 @@ Question: {question}
 | :----------------------------------------------------------- | :------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------- |
 | **[app/bot/routes.py](../../backend/app/bot/routes.py)**     | REST endpoint and HTTP exception mapping                                               | `ask_channel`                                                                                              |
 | **[app/bot/**init**.py](../../backend/app/bot/__init__.py)** | Vector similarity calculation, channel-scoped retrieval, and gating                    | `embed_question`, `search_channel_chunks`, `_cosine_similarity`, `should_return_insufficient_evidence`     |
-| **[app/bot/llm.py](../../backend/app/bot/llm.py)**           | LLM client abstraction, prompt building, provider implementations, citation generation | `LLMClient`, `ClaudeClient`, `OllamaClient`, `PlaceholderLLMClient`, `build_llm_client`, `generate_answer` |
+| **[app/bot/llm.py](../../backend/app/bot/llm.py)**           | LLM client abstraction, prompt building, provider implementations, citation generation | `LLMClient`, `ClaudeClient`, `GeminiClient`, `PlaceholderLLMClient`, `build_llm_client`, `generate_answer` |
 | **[app/bot/schemas.py](../../backend/app/bot/schemas.py)**   | Pydantic request and response schemas                                                  | `AskRequest`, `Citation`, `AskResponse`                                                                    |
 
 ---
@@ -196,4 +196,4 @@ Question: {question}
 
 ### 3. Gateway Timeout & Error Isolation
 
-- **Design**: Network calls to external AI providers (Claude, Ollama) are encapsulated with explicit timeouts (`LLM_TIMEOUT_SECONDS`). Slow or failing third-party APIs are converted cleanly into `504 Gateway Timeout` or `502 Bad Gateway` without crashing the FastAPI event loop.
+- **Design**: Network calls to external AI providers (Claude, Gemini) are encapsulated with explicit timeouts (`LLM_TIMEOUT_SECONDS`). Slow or failing third-party APIs are converted cleanly into `504 Gateway Timeout` or `502 Bad Gateway` without crashing the FastAPI event loop.

@@ -156,63 +156,71 @@ class ClaudeClient:
         return response
 
 
-class OllamaClient:
-    """Local, free LLM provider that exposes an OpenAI-compatible endpoint."""
+class GeminiClient:
+    """Gemini API client for grounded question answering."""
 
-    def __init__(self, model: str | None = None, base_url: str | None = None, timeout: float = 120.0):
+    def __init__(self, api_key: str | None = None, model: str | None = None, timeout: float = 30.0):
         settings = get_settings()
-        self.model_name = model or settings.OLLAMA_MODEL
-        self.base_url = (base_url or settings.OLLAMA_BASE_URL).rstrip("/")
+        self.api_key = api_key or get_llm_api_key()
+        self.model_name = model or settings.GEMINI_MODEL
         self.timeout = settings.LLM_TIMEOUT_SECONDS or timeout
+        self.base_url = "https://generativelanguage.googleapis.com"
 
     def generate_response(self, question: str, chunks: list[dict], history: list[dict] | None = None) -> str:
         if not chunks and not history:
             return INSUFFICIENT_EVIDENCE_MESSAGE
 
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        messages = []
         if history:
-            messages.extend(history)
+            for msg in history:
+                role = "user" if msg["role"] in ["user", "system"] else "model"
+                messages.append({"role": role, "parts": [{"text": msg["content"]}]})
 
+        prompt_text = ""
         if chunks:
             context = build_context(chunks)
-            prompt = f"Context:\n{context}\n\nQuestion: {question}"
-            messages.append({"role": "user", "content": prompt})
+            prompt_text = f"Context:\n{context}\n\nQuestion: {question}"
         else:
-            messages.append({"role": "user", "content": question})
+            prompt_text = question
+
+        messages.append({"role": "user", "parts": [{"text": prompt_text}]})
+
+        payload = {
+            "contents": messages,
+            "systemInstruction": {
+                "role": "user",
+                "parts": [{"text": SYSTEM_PROMPT}]
+            }
+        }
 
         try:
             with httpx.Client(timeout=self.timeout) as client:
                 response = _request_with_retries(
-                    lambda: self._post_and_validate(
-                        client,
-                        {
-                            "model": self.model_name,
-                            "messages": messages,
-                            "stream": False,
-                        },
-                    ),
+                    lambda: self._post_and_validate(client, payload),
                 )
-                payload = response.json()
+                data = response.json()
                 try:
-                    content = payload["message"]["content"]
-                except (KeyError, TypeError) as exc:
-                    raise LLMServiceError("Ollama returned an invalid response payload.") from exc
-                if not isinstance(content, str):
-                    raise LLMServiceError("Ollama returned non-text response content.")
-                return require_response(content, "Ollama")
+                    candidates = data.get("candidates", [])
+                    if not candidates:
+                        raise ValueError("No candidates returned from Gemini.")
+                    content = candidates[0]["content"]["parts"][0]["text"]
+                except (KeyError, IndexError, TypeError, ValueError) as exc:
+                    raise LLMServiceError("Gemini returned an invalid response payload.") from exc
+                return require_response(content, "Gemini")
         except httpx.TimeoutException as exc:
-            raise LLMTimeoutError("Ollama request timed out.") from exc
+            raise LLMTimeoutError("Gemini request timed out.") from exc
         except httpx.HTTPStatusError as exc:
-            raise LLMServiceError(f"Ollama returned status {exc.response.status_code}.") from exc
+            raise LLMServiceError(f"Gemini returned status {exc.response.status_code}.") from exc
         except httpx.RequestError as exc:
-            raise LLMServiceError(f"Ollama request failed: {exc}") from exc
+            raise LLMServiceError(f"Gemini request failed: {exc}") from exc
         except Exception as exc:
             if isinstance(exc, LLMError):
                 raise
-            raise LLMServiceError(f"Unexpected Ollama error: {exc}") from exc
+            raise LLMServiceError(f"Unexpected Gemini error: {exc}") from exc
 
     def _post_and_validate(self, client: httpx.Client, payload: dict) -> httpx.Response:
-        response = client.post(f"{self.base_url}/api/chat", json=payload)
+        url = f"{self.base_url}/v1beta/models/{self.model_name}:generateContent?key={self.api_key}"
+        response = client.post(url, json=payload)
         response.raise_for_status()
         return response
 
@@ -221,15 +229,15 @@ def build_llm_client():
     provider = get_settings().LLM_PROVIDER.lower()
     if provider in {"claude", "anthropic"}:
         return ClaudeClient()
-    if provider in {"ollama", "local", "free"}:
-        return OllamaClient()
+    if provider in {"gemini", "google"}:
+        return GeminiClient()
     return PlaceholderLLMClient()
 
 
 def get_llm_api_key() -> str:
     """Read the configured API key from environment, defaulting to a placeholder."""
     settings = get_settings()
-    return settings.ANTHROPIC_API_KEY or settings.LLM_API_KEY
+    return settings.GEMINI_API_KEY or settings.ANTHROPIC_API_KEY or settings.LLM_API_KEY
 
 
 def generate_answer(

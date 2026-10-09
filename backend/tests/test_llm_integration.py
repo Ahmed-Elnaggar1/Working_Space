@@ -8,7 +8,7 @@ from app.bot.llm import (
     ClaudeClient,
     LLMServiceError,
     LLMTimeoutError,
-    OllamaClient,
+    GeminiClient,
     PlaceholderLLMClient,
     build_llm_client,
     generate_answer,
@@ -146,8 +146,8 @@ def test_claude_client_http_error_raises_llm_service_error() -> None:
             client.generate_response("Question?", chunks)
 
 
-def test_ollama_client_timeout_raises_llm_timeout_error() -> None:
-    client = OllamaClient()
+def test_gemini_client_timeout_raises_llm_timeout_error() -> None:
+    client = GeminiClient(api_key="test-api-key")
     chunks = [{"file_id": uuid4(), "file_name": "spec.pdf", "page_number": 1, "content": "Sample content"}]
 
     with patch("httpx.Client.post", side_effect=httpx.TimeoutException("Timeout")):
@@ -162,8 +162,8 @@ def test_build_llm_client_selection(monkeypatch) -> None:
     monkeypatch.setenv("LLM_PROVIDER", "anthropic")
     assert isinstance(build_llm_client(), ClaudeClient)
 
-    monkeypatch.setenv("LLM_PROVIDER", "ollama")
-    assert isinstance(build_llm_client(), OllamaClient)
+    monkeypatch.setenv("LLM_PROVIDER", "gemini")
+    assert isinstance(build_llm_client(), GeminiClient)
 
     monkeypatch.setenv("LLM_PROVIDER", "placeholder")
     assert isinstance(build_llm_client(), PlaceholderLLMClient)
