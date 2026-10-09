@@ -46,7 +46,7 @@
    - Enforces strict grounded answering based *only* on the provided context.
    - Demands explicit citations (file name and page number) for facts.
 4. **LLM Execution** (`llm.py`):
-   - Instantiates the correct client (`ClaudeClient`, `OllamaClient`, or `PlaceholderLLMClient`) based on configuration.
+   - Instantiates the correct client (`ClaudeClient`, `GeminiClient`, or `PlaceholderLLMClient`) based on configuration.
    - Calls the model and parses the response.
 5. **Citation Formatting**:
    - Maps the utilized chunks into a deduplicated list of citations (`file_id`, `file_name`, `page`).

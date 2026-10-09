@@ -1,32 +1,32 @@
 # Local free LLM setup for Vault
 
-This project is configured to support a free local model through Ollama without paying for Claude or another hosted provider.
+This project is configured to support a free local model through Gemini without paying for Claude or another hosted provider.
 
-## Recommended option: Ollama
+## Recommended option: Gemini
 
-1. Install Ollama from https://ollama.com
+1. Install Gemini from https://Gemini.com
 2. Pull a model:
 
 ```powershell
-ollama pull qwen2.5:7b-instruct
+Gemini pull qwen2.5:7b-instruct
 ```
 
 3. Start the model server:
 
 ```powershell
-ollama run qwen2.5:7b-instruct
+Gemini run qwen2.5:7b-instruct
 ```
 
 4. Keep the project env values as follows:
 
 ```env
-LLM_PROVIDER=ollama
+LLM_PROVIDER=Gemini
 LLM_API_KEY=placeholder-local-key
-OLLAMA_MODEL=qwen2.5:7b-instruct
-OLLAMA_BASE_URL=http://localhost:11434
+Gemini_MODEL=qwen2.5:7b-instruct
+Gemini_BASE_URL=http://localhost:11434
 ```
 
-5. In the backend, the app will call Ollama at:
+5. In the backend, the app will call Gemini at:
 
 ```text
 http://localhost:11434/api/chat
