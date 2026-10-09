@@ -51,6 +51,22 @@ Before you start, ensure your project is pushed to a single GitHub repository. T
 
 ---
 
+## Alternative Step 2: Deploy Backend to Railway.app
+
+If you prefer to use [Railway](https://railway.app/) instead of Render for your backend:
+
+1. Go to **Railway.app** and click **New Project** -> **Deploy from GitHub repo**.
+2. Select your repository.
+3. Click **Add Variables** before deploying (or go to the **Variables** tab of the service after it's created). Add the exact same environment variables listed in the Render section above (`DATABASE_URL`, `ENV`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `LLM_PROVIDER`, `GEMINI_API_KEY`, etc.).
+4. **Crucial Step for Railway**: Add one extra environment variable:
+   - `PORT`: `8000` (Since our Dockerfile hardcodes port 8000, setting this tells Railway to route traffic there).
+5. Go to the **Settings** tab of your new service.
+6. Scroll down to **Root Directory** and set it to `/backend`.
+7. Scroll down to **Networking** and click **Generate Domain** (this will give you a public URL like `https://your-project.up.railway.app`).
+8. Wait for the build and deployment to finish, then copy your generated Railway URL to use in Vercel!
+
+---
+
 ## Step 3: Deploy Frontend to Vercel
 
 1. Go to [Vercel](https://vercel.com/) and sign in with your GitHub account.

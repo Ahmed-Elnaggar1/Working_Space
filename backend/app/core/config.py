@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE_BYTES: int = 10 * 1024 * 1024
     MAX_INGESTION_RETRIES: int = 3
     GEMINI_API_KEY: str | None = None
-    GEMINI_MODEL: str = "gemini-1.5-pro"
+    GEMINI_MODEL: str = "gemini-3.8-flash"
     EMBEDDING_DIMENSION: int = 384
     EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
 
