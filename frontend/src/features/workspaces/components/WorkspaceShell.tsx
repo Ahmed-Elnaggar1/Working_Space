@@ -17,6 +17,11 @@ import {
   setCachedWorkspaceChannels,
   setCachedWorkspaces,
 } from "../../channels/channelCache";
+import {
+  NotificationsProvider,
+  NotificationBell,
+  NotificationInbox,
+} from "../../notifications";
 import styles from "./WorkspaceShell.module.css";
 
 export function WorkspaceShell() {
@@ -248,7 +253,8 @@ export function WorkspaceShell() {
   }
 
   return (
-    <div className={styles.app}>
+    <NotificationsProvider>
+      <div className={styles.app}>
       {/* 1. Left Workspace Rail */}
       <aside className={styles.workspaceRail} aria-label="Workspaces Rail">
         <div className={styles.railTop}>
@@ -307,8 +313,9 @@ export function WorkspaceShell() {
           </div>
         </nav>
 
-        {/* User profile & Logout at bottom of rail */}
+        {/* User profile, Notifications, & Logout at bottom of rail */}
         <div className={styles.railBottom}>
+          <NotificationBell />
           <div
             className={styles.userAvatar}
             title={user?.email ?? "User Profile"}
@@ -457,6 +464,10 @@ export function WorkspaceShell() {
           </div>
         </div>
       )}
+
+      {/* Notification Inbox Popover */}
+      <NotificationInbox onSelectChannel={(channelId) => selectChannel(channelId)} />
     </div>
+  </NotificationsProvider>
   );
 }
