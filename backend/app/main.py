@@ -13,16 +13,23 @@ from app.files.routes import router as files_router
 from app.notifications.routes import router as notifications_router
 from app.workspaces.routes import router as workspaces_router
 
+from app.core.config import settings
+
 app = FastAPI(title="Vault API", version="0.1.0")
+
+origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
+if settings.FRONTEND_URL:
+    origins.append(settings.FRONTEND_URL.rstrip("/"))
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

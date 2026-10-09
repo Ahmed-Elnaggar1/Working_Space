@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     JWT_ACCESS_EXPIRES_IN: str = "15m"
     JWT_REFRESH_EXPIRES_IN: str = "7d"
 
+    FRONTEND_URL: str | None = None
+
     CLAUDE_MODEL: str = "claude-3-5-sonnet-20241022"
     ANTHROPIC_BASE_URL: str = "https://api.anthropic.com"
     ANTHROPIC_API_KEY: str | None = None
