@@ -29,7 +29,8 @@ async def ask_channel(
         min_score=INSUFFICIENT_EVIDENCE_THRESHOLD,
     )
     if not chunks:
-        return generate_answer(payload.question, [])
+        history_dicts = [h.model_dump() for h in payload.history] if payload.history else None
+        return generate_answer(payload.question, [], history_dicts)
 
     chunk_context = [
         {
@@ -42,7 +43,8 @@ async def ask_channel(
         for chunk in chunks
     ]
     try:
-        return generate_answer(payload.question, chunk_context)
+        history_dicts = [h.model_dump() for h in payload.history] if payload.history else None
+        return generate_answer(payload.question, chunk_context, history_dicts)
     except LLMTimeoutError as exc:
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,

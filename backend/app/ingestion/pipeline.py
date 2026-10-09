@@ -33,6 +33,8 @@ async def run_ingestion_pipeline(file_id: UUID, db: AsyncSession | None = None) 
 
 
 async def _run_ingestion(file_id: UUID, db: AsyncSession) -> None:
+    import asyncio
+    
     file_record = await db.get(File, file_id)
     if not file_record:
         return
@@ -48,34 +50,38 @@ async def _run_ingestion(file_id: UUID, db: AsyncSession) -> None:
         await db.commit()
 
         # 3. Download the file bytes from storage
-        file_bytes = storage.download_file(file_record.storage_path)
+        file_bytes = await asyncio.to_thread(storage.download_file, file_record.storage_path)
 
         # 4. Parse the file contents
-        pages_content = parse_file(file_record.filename, file_bytes)
+        pages_content = await asyncio.to_thread(parse_file, file_record.filename, file_bytes)
         if not pages_content or not any(text.strip() for _, text in pages_content):
             raise ParsingError("No readable text content found in the file.")
 
         # 5. Split text into chunks
-        chunks_data = chunk_parsed_content(pages_content)
+        chunks_data = await asyncio.to_thread(chunk_parsed_content, pages_content)
         if not chunks_data:
             raise ParsingError("Could not extract any chunks from the document content.")
 
         # 6. Generate embeddings and save chunks
+        chunk_records = []
         for chunk_dict in chunks_data:
             text_content = chunk_dict["content"]
             page_num = chunk_dict["page_number"]
 
-            embedding = generate_embedding(text_content)
+            embedding = await asyncio.to_thread(generate_embedding, text_content)
 
-            chunk_record = Chunk(
-                file_id=file_id,
-                channel_id=file_record.channel_id,  # Denormalized from file for fast permissions filtering
-                page_number=page_num,
-                section=chunk_dict.get("section"),
-                content=text_content,
-                embedding=embedding,
+            chunk_records.append(
+                Chunk(
+                    file_id=file_id,
+                    channel_id=file_record.channel_id,
+                    page_number=page_num,
+                    section=chunk_dict.get("section"),
+                    content=text_content,
+                    embedding=embedding,
+                )
             )
-            db.add(chunk_record)
+            
+        db.add_all(chunk_records)
 
         # 7. Update status to completed
         file_record.ingestion_status = "completed"

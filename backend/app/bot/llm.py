@@ -6,19 +6,17 @@ from app.core.config import get_settings
 
 
 INSUFFICIENT_EVIDENCE_MESSAGE = "Insufficient evidence in this channel to answer the question."
-RAG_PROMPT_TEMPLATE = (
-    "You are a helpful assistant answering questions strictly based on the provided channel materials.\n"
-    "Answer the question using only the facts in the context. Cite the file name and page number for facts.\n"
-    "If the context does not contain sufficient information to answer the question, say so clearly.\n\n"
-    "Context:\n{context}\n\n"
-    "Question: {question}"
+SYSTEM_PROMPT = (
+    "You are a helpful assistant answering questions based on the provided channel materials and conversation history.\n"
+    "Answer questions using only the facts in the provided context or previous messages. "
+    "If the context and history do not contain sufficient information to answer a question, say so clearly."
 )
 
 
 class LLMClient(Protocol):
     model_name: str
 
-    def generate_response(self, question: str, chunks: list[dict]) -> str:
+    def generate_response(self, question: str, chunks: list[dict], history: list[dict] | None = None) -> str:
         ...
 
 
@@ -75,8 +73,8 @@ class PlaceholderLLMClient:
 
     model_name = "placeholder-local-model"
 
-    def generate_response(self, question: str, chunks: list[dict]) -> str:
-        if not chunks:
+    def generate_response(self, question: str, chunks: list[dict], history: list[dict] | None = None) -> str:
+        if not chunks and not history:
             return INSUFFICIENT_EVIDENCE_MESSAGE
 
         context = build_context(chunks)
@@ -101,12 +99,20 @@ class ClaudeClient:
         self.base_url = (base_url or settings.ANTHROPIC_BASE_URL).rstrip("/")
         self.timeout = settings.LLM_TIMEOUT_SECONDS or timeout
 
-    def generate_response(self, question: str, chunks: list[dict]) -> str:
-        if not chunks:
+    def generate_response(self, question: str, chunks: list[dict], history: list[dict] | None = None) -> str:
+        if not chunks and not history:
             return INSUFFICIENT_EVIDENCE_MESSAGE
 
-        context = build_context(chunks)
-        prompt = RAG_PROMPT_TEMPLATE.format(context=context, question=question)
+        messages = []
+        if history:
+            messages.extend(history)
+
+        if chunks:
+            context = build_context(chunks)
+            prompt = f"Context:\n{context}\n\nQuestion: {question}"
+            messages.append({"role": "user", "content": prompt})
+        else:
+            messages.append({"role": "user", "content": question})
 
         headers = {
             "x-api-key": self.api_key,
@@ -116,7 +122,8 @@ class ClaudeClient:
         payload = {
             "model": self.model_name,
             "max_tokens": 1024,
-            "messages": [{"role": "user", "content": prompt}],
+            "system": SYSTEM_PROMPT,
+            "messages": messages,
         }
 
         try:
@@ -158,12 +165,20 @@ class OllamaClient:
         self.base_url = (base_url or settings.OLLAMA_BASE_URL).rstrip("/")
         self.timeout = settings.LLM_TIMEOUT_SECONDS or timeout
 
-    def generate_response(self, question: str, chunks: list[dict]) -> str:
-        if not chunks:
+    def generate_response(self, question: str, chunks: list[dict], history: list[dict] | None = None) -> str:
+        if not chunks and not history:
             return INSUFFICIENT_EVIDENCE_MESSAGE
 
-        context = build_context(chunks)
-        prompt = RAG_PROMPT_TEMPLATE.format(context=context, question=question)
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        if history:
+            messages.extend(history)
+
+        if chunks:
+            context = build_context(chunks)
+            prompt = f"Context:\n{context}\n\nQuestion: {question}"
+            messages.append({"role": "user", "content": prompt})
+        else:
+            messages.append({"role": "user", "content": question})
 
         try:
             with httpx.Client(timeout=self.timeout) as client:
@@ -172,7 +187,7 @@ class OllamaClient:
                         client,
                         {
                             "model": self.model_name,
-                            "messages": [{"role": "user", "content": prompt}],
+                            "messages": messages,
                             "stream": False,
                         },
                     ),
@@ -220,12 +235,13 @@ def get_llm_api_key() -> str:
 def generate_answer(
     question: str,
     chunks: list[dict],
+    history: list[dict] | None = None,
     llm_client: LLMClient | None = None,
 ) -> dict:
     if llm_client is None:
         llm_client = build_llm_client()
 
-    if not chunks:
+    if not chunks and not history:
         return {
             "answer": INSUFFICIENT_EVIDENCE_MESSAGE,
             "citations": [],
@@ -236,7 +252,7 @@ def generate_answer(
         if "file_name" not in chunk or "page_number" not in chunk:
             raise ValueError("Each chunk must include file metadata and page number.")
 
-    raw_answer = llm_client.generate_response(question, chunks)
+    raw_answer = llm_client.generate_response(question, chunks, history)
     seen = set()
     citations = []
     for chunk in chunks:

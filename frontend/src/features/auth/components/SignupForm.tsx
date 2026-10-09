@@ -10,15 +10,33 @@ interface SignupFormProps {
 
 export function SignupForm({ onSubmit, error, isSubmitting }: SignupFormProps) {
   const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
   async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
-    await onSubmit({ email, password });
+    await onSubmit({ username, email, password });
   }
 
   return (
     <form className={styles.form} onSubmit={handleSubmit}>
+      <div className={styles.inputGroup}>
+        <label className={styles.label} htmlFor="signup-username">
+          Username
+        </label>
+        <input
+          id="signup-username"
+          type="text"
+          className={styles.input}
+          placeholder="your-username"
+          value={username}
+          onChange={(event) => setUsername(event.target.value)}
+          required
+          maxLength={50}
+          autoComplete="username"
+        />
+      </div>
+
       <div className={styles.inputGroup}>
         <label className={styles.label} htmlFor="signup-email">
           Email address

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { askChannel, downloadChannelFile } from "../api";
+import { useAuth } from "../../auth/useAuth";
 import {
   clearSessionAskHistory,
   formatCitationLabel,
@@ -23,6 +24,7 @@ interface BotAskPanelProps {
 }
 
 export function BotAskPanel({ channelId }: BotAskPanelProps) {
+  const { user } = useAuth();
   const [history, setHistory] = useState<BotQAPair[]>(() =>
     loadSessionAskHistory(channelId),
   );
@@ -94,7 +96,14 @@ export function BotAskPanel({ channelId }: BotAskPanelProps) {
     }, LONG_WAIT_THRESHOLD_MS);
 
     try {
-      const response = await askChannel(channelId, trimmed);
+      const apiHistory = history.flatMap(item => {
+        const msgs = [{ role: "user", content: item.question }];
+        if (item.answer) {
+          msgs.push({ role: "assistant", content: item.answer });
+        }
+        return msgs;
+      });
+      const response = await askChannel(channelId, trimmed, apiHistory);
 
       setHistory((prev) =>
         prev.map((item) => {
@@ -249,7 +258,7 @@ export function BotAskPanel({ channelId }: BotAskPanelProps) {
             <div key={qaItem.id} className={styles.qaCard}>
               {/* Question Row */}
               <div className={styles.questionRow}>
-                <span className={styles.userBadge}>You</span>
+                <span className={styles.userBadge}>{user?.username ?? "..."}</span>
                 <div className={styles.questionContent}>
                   <p className={styles.questionText}>{qaItem.question}</p>
                   <p className={styles.timestamp}>

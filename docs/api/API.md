@@ -200,9 +200,43 @@ Message content is required and limited to 4000 characters.
 
 ### `POST /channels/{channel_id}/messages`
 
-Request: `{"content":"Message text"}`
+Request:
+```json
+{
+  "content": "Message text",
+  "parent_message_id": "uuid-optional"
+}
+```
 
-Requires send-message permission.
+Requires send-message permission. If `parent_message_id` is supplied, it must identify a message within the same channel whose own `parent_message_id` is null (nested thread replies are rejected with `400`).
+
+### `GET /channels/{channel_id}/messages/{message_id}/thread`
+
+Returns the replies belonging to a message thread, ordered chronologically by `created_at`.
+Requires view-messages permission.
+
+Response `200`:
+```json
+{
+  "parent": {
+    "id": "uuid",
+    "channel_id": "uuid",
+    "user_id": "uuid",
+    "content": "Root message text",
+    "created_at": "timestamp"
+  },
+  "items": [
+    {
+      "id": "uuid",
+      "channel_id": "uuid",
+      "user_id": "uuid",
+      "parent_message_id": "uuid",
+      "content": "Reply text",
+      "created_at": "timestamp"
+    }
+  ]
+}
+```
 
 ### `WS /ws/channels/{channel_id}`
 
@@ -211,12 +245,88 @@ Clients authenticate with `?token=<access_token>` (an `Authorization: Bearer`
 header is also accepted). The token is decoded and its expiry is checked during
 the handshake; missing, invalid, or expired credentials are rejected with
 WebSocket close code `1008`. Each received JSON message has the shape
-`{"content":"Message text"}`. Every message is validated against the sender's
-current membership and role; a role change takes effect on the next message,
-and membership removal closes the connection with WebSocket close code 1008.
-Persisted messages are broadcast to other clients in the same channel only.
-The connection manager is in-memory and therefore intended for the current
-single-backend deployment; multi-instance delivery requires shared messaging.
+`{"content":"Message text"}` or `{"content":"Message text", "parent_message_id":"uuid"}`.
+Every message is validated against the sender's current membership and role;
+a role change takes effect on the next message, and membership removal closes
+the connection with WebSocket close code 1008. Persisted messages are broadcast
+to other clients in the same channel only. The connection manager is in-memory
+and therefore intended for the current single-backend deployment; multi-instance
+delivery requires shared messaging.
+
+## Notifications
+
+### `GET /notifications`
+
+Paginated, newest-first notifications inbox scoped strictly to the authenticated caller.
+Query params: `limit` (default 50, 1-100), `before` (cursor).
+
+Response `200`:
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "user_id": "uuid",
+      "actor_id": "uuid",
+      "channel_id": "uuid",
+      "message_id": "uuid",
+      "type": "mention",
+      "is_read": false,
+      "created_at": "timestamp"
+    }
+  ],
+  "next_cursor": "opaque-cursor-or-null"
+}
+```
+
+### `GET /notifications/unread-count`
+
+Computes the caller's live unread notifications count.
+
+Response `200`:
+```json
+{
+  "unread_count": 3
+}
+```
+
+### `PATCH /notifications/{id}/read`
+
+Marks a single notification belonging to the caller as read.
+Attempting to mark another user's notification returns `404` or `403`.
+
+Response `200`:
+```json
+{
+  "id": "uuid",
+  "user_id": "uuid",
+  "actor_id": "uuid",
+  "channel_id": "uuid",
+  "message_id": "uuid",
+  "type": "mention",
+  "is_read": true,
+  "created_at": "timestamp"
+}
+```
+
+### `PATCH /notifications/read-all`
+
+Marks all unread notifications belonging to the caller as read.
+
+Response `200`:
+```json
+{
+  "marked_read_count": 3
+}
+```
+
+### `WS /ws/notifications`
+
+Per-user real-time notification WebSocket.
+Authenticated via query param `?token=<access_token>` or `Authorization: Bearer <access_token>`.
+Rejects invalid/missing tokens with code `1008`.
+Pushes new notification objects to the connected user in real time upon mention or thread reply.
+
 
 ## Bot
 

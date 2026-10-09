@@ -56,7 +56,7 @@ class ChannelMemberResponse(BaseModel):
 
     id: UUID
     user_id: UUID
+    username: str
     email: str
     channel_id: UUID
     role: str
-

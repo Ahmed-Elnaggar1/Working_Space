@@ -1,12 +1,12 @@
 import { useState, type SubmitEvent } from "react";
 import { ApiError } from "../../../shared/api";
 import { createChannel } from "../api";
-import type { ChannelCreateInput } from "../types";
+import type { Channel, ChannelCreateInput } from "../types";
 import styles from "./CreateChannelForm.module.css";
 
 interface CreateChannelFormProps {
   workspaceId: string;
-  onCreated: () => void;
+  onCreated: (channel?: Channel) => void;
 }
 
 export function CreateChannelForm({
@@ -25,9 +25,9 @@ export function CreateChannelForm({
     setIsSubmitting(true);
 
     try {
-      await createChannel(workspaceId, input);
+      const channel = await createChannel(workspaceId, input);
       setName("");
-      onCreated();
+      onCreated(channel);
     } catch (submitError) {
       setError(
         submitError instanceof ApiError

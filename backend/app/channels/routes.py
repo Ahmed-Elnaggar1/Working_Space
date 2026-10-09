@@ -103,6 +103,7 @@ async def list_channel_members(
         select(
             Membership.id,
             Membership.user_id,
+            User.username,
             User.email,
             Membership.channel_id,
             Membership.role,
@@ -115,9 +116,10 @@ async def list_channel_members(
         {
             "id": row[0],
             "user_id": row[1],
-            "email": row[2],
-            "channel_id": row[3],
-            "role": row[4],
+            "username": row[2] or row[3].split("@", 1)[0],
+            "email": row[3],
+            "channel_id": row[4],
+            "role": row[5],
         }
         for row in rows.all()
     ]
@@ -174,4 +176,3 @@ async def remove_channel_member(
 ):
     await service.remove_member(db, channel_id=channel_id, user_id=user_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-

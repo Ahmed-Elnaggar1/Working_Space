@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     LLM_RETRY_DELAY_SECONDS: float = 1.0
     MAX_FILE_SIZE_BYTES: int = 10 * 1024 * 1024
     MAX_INGESTION_RETRIES: int = 3
-    OLLAMA_MODEL: str = "qwen2.5:7b-instruct"
+    OLLAMA_MODEL: str = "qwen2.5:0.5b"
     OLLAMA_BASE_URL: str = "http://localhost:11434"
 
     EMBEDDING_DIMENSION: int = 384

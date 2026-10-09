@@ -17,18 +17,61 @@ services:
       timeout: 5s
       retries: 5
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: vault_ollama
+    restart: always
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      # We force CPU mode to prevent CUDA driver crashes on host machines
+      - CUDA_VISIBLE_DEVICES=-1
+
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: vault_ollama_init
+    depends_on:
+      - ollama
+    # Automatically pulls the model on first startup
+    command: pull qwen2.5:0.5b
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+
   backend:
     build: ./backend
+    container_name: vault_backend
     restart: on-failure
     ports:
       - "8000:8000"
     environment:
       DATABASE_URL: ${DATABASE_URL}
+      LLM_PROVIDER: ${LLM_PROVIDER}
+      OLLAMA_MODEL: ${OLLAMA_MODEL}
+      # Override local .env to point to the docker network ollama
+      OLLAMA_BASE_URL: http://ollama:11434
     volumes:
       - ./backend:/app
     depends_on:
       db:
         condition: service_healthy
+      ollama-init:
+        condition: service_completed_successfully
+
+  frontend:
+    build: ./frontend
+    container_name: vault_frontend
+    restart: on-failure
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      # Anonymous volume so the host's node_modules doesn't overwrite the container's alpine modules
+      - /app/node_modules
+    depends_on:
+      - backend
 
 volumes:
   postgres_data:
+  ollama_data:
