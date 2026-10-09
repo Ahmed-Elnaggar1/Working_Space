@@ -17,6 +17,8 @@ from app.core.db import get_db
 from app.models import Channel, Membership, Message
 from app.permissions import require_role
 from app.permissions.dependencies import ROLE_PERMISSIONS
+from app.chat.repositories import MessageRepository
+from app.chat.schemas import ThreadResponse
 
 router = APIRouter(tags=["chat"])
 
@@ -156,3 +158,29 @@ async def get_messages(
     messages = list(reversed(messages[:limit]))
     next_cursor = _encode_message_cursor(messages[0]) if has_more else None
     return MessagePage(items=messages, next_cursor=next_cursor)
+
+@router.get(
+    "/channels/{channel_id}/messages/{message_id}/thread",
+    response_model=ThreadResponse,
+    dependencies=[Depends(require_role("view_messages"))],
+)
+async def get_message_thread(
+    channel_id: UUID,
+    message_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> ThreadResponse:
+    message_repo = MessageRepository(db)
+    
+    # 1. Fetch parent message
+    parent_msg = await message_repo.get_by_id(message_id)
+    if not parent_msg or parent_msg.channel_id != channel_id:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    # 2. Fetch thread replies using your repository method
+    replies = await message_repo.get_thread_replies(message_id)
+
+    # 3. Return the thread payload
+    return ThreadResponse(
+        parent=MessageResponse.model_validate(parent_msg),
+        items=[MessageResponse.model_validate(r) for r in replies],
+    )

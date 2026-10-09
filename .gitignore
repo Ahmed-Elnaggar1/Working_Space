@@ -8,4 +8,6 @@ node_modules/
 .next/
 *.log
 .venv
-
+.pytest_cache/
+.ruff_cache/
+.local_storage/

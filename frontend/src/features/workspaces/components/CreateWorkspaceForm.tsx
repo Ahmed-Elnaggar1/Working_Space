@@ -1,11 +1,11 @@
 import { useState, type SubmitEvent } from "react";
 import { ApiError } from "../../../shared/api";
 import { createWorkspace } from "../api";
-import type { WorkspaceCreateInput } from "../types";
+import type { Workspace, WorkspaceCreateInput } from "../types";
 import styles from "./CreateWorkspaceForm.module.css";
 
 interface CreateWorkspaceFormProps {
-  onCreated: () => void;
+  onCreated: (workspace?: Workspace) => void;
 }
 
 export function CreateWorkspaceForm({ onCreated }: CreateWorkspaceFormProps) {
@@ -21,9 +21,9 @@ export function CreateWorkspaceForm({ onCreated }: CreateWorkspaceFormProps) {
     setIsSubmitting(true);
 
     try {
-      await createWorkspace(input);
+      const workspace = await createWorkspace(input);
       setName("");
-      onCreated();
+      onCreated(workspace);
     } catch (submitError) {
       setError(
         submitError instanceof ApiError

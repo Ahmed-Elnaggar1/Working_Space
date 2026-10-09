@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from enum import StrEnum
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import CHAR, TypeDecorator
 from pgvector.sqlalchemy import Vector
@@ -160,13 +160,81 @@ class Message(Base):
     __tablename__ = "messages"
     __table_args__ = (
         Index("ix_messages_channel_created_at", "channel_id", "created_at"),
+        Index("ix_messages_parent_message_id", "parent_message_id"),
     )
 
     id: Mapped[UUID] = mapped_column(GUID(), primary_key=True, default=uuid4)
     channel_id: Mapped[UUID] = mapped_column(ForeignKey("channels.id", ondelete="CASCADE"), nullable=False)
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    parent_message_id: Mapped[UUID | None] = mapped_column(
+        GUID(), ForeignKey("messages.id", ondelete="CASCADE"), nullable=True
+    )
     content: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     channel: Mapped[Channel] = relationship(back_populates="messages")
     user: Mapped[User] = relationship()
+    parent: Mapped["Message | None"] = relationship(
+        "Message", remote_side=[id], back_populates="replies"
+    )
+    replies: Mapped[list["Message"]] = relationship(
+        "Message", back_populates="parent", cascade="all, delete-orphan"
+    )
+    mentions: Mapped[list["Mention"]] = relationship(
+        "Mention", back_populates="message", cascade="all, delete-orphan"
+    )
+
+
+class Mention(Base):
+    __tablename__ = "mentions"
+    __table_args__ = (
+        UniqueConstraint("message_id", "mentioned_user_id", name="uq_mentions_message_user"),
+        Index("ix_mentions_mentioned_user_id", "mentioned_user_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(GUID(), primary_key=True, default=uuid4)
+    message_id: Mapped[UUID] = mapped_column(
+        GUID(), ForeignKey("messages.id", ondelete="CASCADE"), nullable=False
+    )
+    mentioned_user_id: Mapped[UUID] = mapped_column(
+        GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    message: Mapped["Message"] = relationship(back_populates="mentions")
+    mentioned_user: Mapped["User"] = relationship()
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+    __table_args__ = (
+        CheckConstraint(
+            "type IN ('mention', 'thread_reply')",
+            name="ck_notifications_type_valid",
+        ),
+        Index("ix_notifications_user_unread", "user_id", "is_read"),
+        Index("ix_notifications_user_created_at", "user_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(GUID(), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    actor_id: Mapped[UUID] = mapped_column(
+        GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    channel_id: Mapped[UUID] = mapped_column(
+        GUID(), ForeignKey("channels.id", ondelete="CASCADE"), nullable=False
+    )
+    message_id: Mapped[UUID] = mapped_column(
+        GUID(), ForeignKey("messages.id", ondelete="CASCADE"), nullable=False
+    )
+    type: Mapped[str] = mapped_column(String(50), nullable=False)
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    user: Mapped["User"] = relationship(foreign_keys=[user_id])
+    actor: Mapped["User"] = relationship(foreign_keys=[actor_id])
+    channel: Mapped["Channel"] = relationship()
+    message: Mapped["Message"] = relationship()
+

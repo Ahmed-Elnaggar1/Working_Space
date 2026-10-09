@@ -10,7 +10,7 @@ import NotFoundPage from "../pages/NotFoundPage";
 export const router = createBrowserRouter([
   {
     path: "/",
-    element: <Navigate to="/login" replace />,
+    element: <Navigate to="/workspaces" replace />,
   },
   {
     path: "/login",
@@ -27,6 +27,10 @@ export const router = createBrowserRouter([
       {
         path: "/workspaces/:workspaceId",
         element: <WorkspaceDetailPage />,
+      },
+      {
+        path: "/workspaces/:workspaceId/channels/:channelId",
+        element: <ChannelDetailPage />,
       },
       {
         path: "/channels/:channelId",

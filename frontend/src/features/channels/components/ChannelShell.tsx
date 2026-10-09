@@ -10,6 +10,7 @@ import {
   updateChannelMemberRole,
 } from "../api";
 import {
+  canAskChannelBot,
   canSendChannelMessages,
   getWebSocketCloseErrorMessage,
   type WebSocketConnectionStatus,
@@ -22,29 +23,39 @@ import {
   canManageChannelMembers,
   getMemberActionErrorMessage,
 } from "../memberManagement";
+import {
+  getCachedChannelData,
+  setCachedChannelData,
+  updateCachedFiles,
+  updateCachedMembers,
+} from "../channelCache";
 import type {
   Channel,
   ChannelFile,
   ChannelMember,
   ChannelMemberRole,
 } from "../types";
-import { BotAskPanel } from "./BotAskPanel";
 import { FileList } from "./FileList";
 import { FileUploadForm } from "./FileUploadForm";
 import { InviteMemberForm } from "./InviteMemberForm";
 import { MessageHistory } from "./MessageHistory";
+import { BotAskPanel } from "./BotAskPanel";
 import styles from "./ChannelShell.module.css";
 
 interface ChannelShellProps {
   channelId: string;
+  workspaceName?: string;
 }
 
-export function ChannelShell({ channelId }: ChannelShellProps) {
+export function ChannelShell({ channelId, workspaceName }: ChannelShellProps) {
   const { user } = useAuth();
-  const [channel, setChannel] = useState<Channel | null>(null);
-  const [members, setMembers] = useState<ChannelMember[]>([]);
-  const [files, setFiles] = useState<ChannelFile[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+
+  // Initialize from cache if already loaded
+  const cached = getCachedChannelData(channelId);
+  const [channel, setChannel] = useState<Channel | null>(cached ? cached.channel : null);
+  const [members, setMembers] = useState<ChannelMember[]>(cached ? cached.members : []);
+  const [files, setFiles] = useState<ChannelFile[]>(cached ? cached.files : []);
+  const [isLoading, setIsLoading] = useState(!cached);
   const [error, setError] = useState<string | null>(null);
   const [roleError, setRoleError] = useState<string | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
@@ -54,9 +65,34 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
   const [socketStatus, setSocketStatus] =
     useState<WebSocketConnectionStatus>("connecting");
   const [socketError, setSocketError] = useState<string | null>(null);
+
+  // Right-side contextual panel state
+  const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
+  const [rightPanelTab, setRightPanelTab] = useState<"info" | "bot">("info");
+
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
 
+  // Sync cache on channelId change
+  useEffect(() => {
+    const cachedData = getCachedChannelData(channelId);
+    if (cachedData) {
+      setChannel(cachedData.channel);
+      setMembers(cachedData.members);
+      setFiles(cachedData.files);
+      setIsLoading(false);
+    } else {
+      setChannel(null);
+      setMembers([]);
+      setFiles([]);
+      setIsLoading(true);
+    }
+    setError(null);
+    setRoleError(null);
+    setRemoveError(null);
+  }, [channelId]);
+
+  // WebSocket lifecycle management (isolated to active channel)
   useEffect(() => {
     const tokenProvider = getTokenProvider();
     const token = tokenProvider ? tokenProvider() : null;
@@ -118,11 +154,15 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
     };
   }, [channelId]);
 
+  // Fetch channel details, members, and files
   useEffect(() => {
     let isMounted = true;
 
     async function loadChannel() {
-      setIsLoading(true);
+      const cachedData = getCachedChannelData(channelId);
+      if (!cachedData) {
+        setIsLoading(true);
+      }
       setError(null);
 
       try {
@@ -135,9 +175,14 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
           setChannel(channelResult);
           setMembers(membersResult);
           setFiles(filesResult);
+          setCachedChannelData(channelId, {
+            channel: channelResult,
+            members: membersResult,
+            files: filesResult,
+          });
         }
       } catch (loadError) {
-        if (isMounted) {
+        if (isMounted && !cachedData) {
           setError(
             loadError instanceof ApiError
               ? loadError.message
@@ -158,7 +203,7 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
     };
   }, [channelId]);
 
-  // S7-06: Ingestion status polling while any file is pending or processing
+  // Active file ingestion status polling
   useEffect(() => {
     if (!hasActiveIngestion(files)) {
       return;
@@ -168,8 +213,9 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
       try {
         const latestFiles = await getChannelFiles(channelId);
         setFiles(latestFiles);
+        updateCachedFiles(channelId, latestFiles);
       } catch {
-        // Silently preserve current files on intermittent poll failure
+        // Silently preserve current files
       }
     }, INGESTION_POLL_INTERVAL_MS);
 
@@ -177,22 +223,39 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
   }, [channelId, files]);
 
   async function refreshMembers() {
-    const result = await getChannelMembers(channelId);
-    setMembers(result);
+    try {
+      const result = await getChannelMembers(channelId);
+      setMembers(result);
+      updateCachedMembers(channelId, result);
+    } catch {
+      // Ignore
+    }
   }
 
   function handleFileUploaded(newFile: ChannelFile) {
-    setFiles((prev) => [newFile, ...prev]);
+    setFiles((prev) => {
+      const updated = [newFile, ...prev];
+      updateCachedFiles(channelId, updated);
+      return updated;
+    });
   }
 
   function handleFileDeleted(fileId: string) {
-    setFiles((prev) => prev.filter((file) => file.id !== fileId));
+    setFiles((prev) => {
+      const updated = prev.filter((file) => file.id !== fileId);
+      updateCachedFiles(channelId, updated);
+      return updated;
+    });
   }
 
   function handleFileUpdated(updatedFile: ChannelFile) {
-    setFiles((prev) =>
-      prev.map((file) => (file.id === updatedFile.id ? updatedFile : file)),
-    );
+    setFiles((prev) => {
+      const updated = prev.map((file) =>
+        file.id === updatedFile.id ? updatedFile : file,
+      );
+      updateCachedFiles(channelId, updated);
+      return updated;
+    });
   }
 
   async function handleRoleChange(userId: string, role: ChannelMemberRole) {
@@ -227,27 +290,143 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
     }
   }
 
-  if (isLoading) {
-    return <p className={styles.status}>Loading channel...</p>;
+  function openBotChat() {
+    setRightPanelTab("bot");
+    setIsRightPanelOpen(true);
   }
 
-  if (error) {
-    return <p className={styles.error}>{error}</p>;
-  }
-
-  if (!channel) {
-    return <p className={styles.error}>Channel not found.</p>;
+  function openChannelInfo(section?: "files" | "members") {
+    setRightPanelTab("info");
+    setIsRightPanelOpen(true);
+    if (section) {
+      const el = document.getElementById(`section-${section}`);
+      el?.scrollIntoView({ behavior: "smooth" });
+    }
   }
 
   const currentMember = members.find((member) => member.user_id === user?.id);
   const canManageMembers = canManageChannelMembers(currentMember?.role);
+  const canSendMessages = canSendChannelMessages(currentMember?.role);
+  const canAskBot = canAskChannelBot(currentMember?.role);
+
+  // If initial load with no cached channel data, show middle panel skeleton
+  if (isLoading && !channel) {
+    return (
+      <section className={styles.shell}>
+        <header className={styles.channelHeader}>
+          <div className={styles.headerTitleGroup}>
+            <div className={styles.skeletonTitle} />
+          </div>
+        </header>
+        <div className={styles.chatColumn}>
+          <div className={styles.skeletonChat} />
+        </div>
+      </section>
+    );
+  }
+
+  if (error && !channel) {
+    return (
+      <div className={styles.errorState}>
+        <span className={styles.errorIcon}>⚠️</span>
+        <h2>Unable to load channel</h2>
+        <p className={styles.error}>{error}</p>
+      </div>
+    );
+  }
+
+  if (!channel) {
+    return (
+      <div className={styles.emptyState}>
+        <p className={styles.error}>Channel not found.</p>
+      </div>
+    );
+  }
 
   return (
     <section className={styles.shell}>
-      <p className={styles.eyebrow}>Channel</p>
-      <h1>{channel.name}</h1>
+      {/* Top Channel Header */}
+      <header className={styles.channelHeader}>
+        <div className={styles.headerTitleGroup}>
+          <div className={styles.channelPrefix}>#</div>
+          <div>
+            <h1>{channel.name}</h1>
+            {workspaceName && (
+              <span className={styles.workspaceSubtitle}>in {workspaceName}</span>
+            )}
+          </div>
+        </div>
 
-      <div className={styles.section}>
+        <div className={styles.headerToolbar}>
+          {/* Connection status badge */}
+          <div
+            className={`${styles.connectionBadge} ${
+              socketStatus === "connected"
+                ? styles.connected
+                : socketStatus === "disconnected"
+                ? styles.offline
+                : styles.connecting
+            }`}
+            title={`WebSocket status: ${socketStatus}`}
+          >
+            <span className={styles.statusDot} />
+            <span className={styles.statusText}>{socketStatus}</span>
+          </div>
+
+          {/* Quick Action Buttons */}
+          <button
+            type="button"
+            className={`${styles.toolbarButton} ${
+              isRightPanelOpen && rightPanelTab === "bot" ? styles.activeBtn : ""
+            }`}
+            onClick={openBotChat}
+            title="Open AI Bot Assistant"
+          >
+            <span>🤖</span>
+            <span>Ask Bot</span>
+          </button>
+
+          <button
+            type="button"
+            className={`${styles.toolbarButton} ${
+              isRightPanelOpen && rightPanelTab === "info" ? styles.activeBtn : ""
+            }`}
+            onClick={() => openChannelInfo("files")}
+            title="View channel files"
+          >
+            <span>📁</span>
+            <span>Files ({files.length})</span>
+          </button>
+
+          <button
+            type="button"
+            className={`${styles.toolbarButton} ${
+              isRightPanelOpen && rightPanelTab === "info" ? styles.activeBtn : ""
+            }`}
+            onClick={() => openChannelInfo("members")}
+            title="View channel members"
+          >
+            <span>👥</span>
+            <span>Members ({members.length})</span>
+          </button>
+
+          {/* Toggle Panel Button */}
+          <button
+            type="button"
+            className={`${styles.panelToggleButton} ${
+              isRightPanelOpen ? styles.panelOpen : ""
+            }`}
+            onClick={() => setIsRightPanelOpen((prev) => !prev)}
+            title={isRightPanelOpen ? "Collapse details panel" : "Open details panel"}
+            aria-label="Toggle details panel"
+          >
+            {isRightPanelOpen ? "⇥" : "⇤"}
+          </button>
+        </div>
+      </header>
+
+      {/* Main Conversation & Composer (Middle Pane) */}
+      <div className={styles.chatColumn}>
         <MessageHistory
           key={channelId}
           channelId={channelId}
@@ -256,97 +435,196 @@ export function ChannelShell({ channelId }: ChannelShellProps) {
           socket={socket}
           socketStatus={socketStatus}
           socketError={socketError}
-          canSendMessages={canSendChannelMessages(currentMember?.role)}
+          canSendMessages={canSendMessages}
+          canAskBot={canAskBot}
+          onOpenBotChat={openBotChat}
+          onOpenFileUpload={() => openChannelInfo("files")}
         />
       </div>
 
-      <div className={styles.section}>
-        <h2>Files</h2>
-        <FileUploadForm
-          channelId={channelId}
-          userRole={currentMember?.role}
-          onUploaded={handleFileUploaded}
-        />
-        <FileList
-          channelId={channelId}
-          files={files}
-          members={members}
-          currentUserId={user?.id}
-          currentUserRole={currentMember?.role}
-          onFileDeleted={handleFileDeleted}
-          onFileUpdated={handleFileUpdated}
-        />
-      </div>
+      {/* Contextual & Collapsible Right Panel */}
+      {isRightPanelOpen && (
+        <aside
+          className={styles.detailsColumn}
+          aria-label="Channel contextual information"
+        >
+          {/* Panel Header & Tabs */}
+          <div className={styles.panelHeader}>
+            <div className={styles.panelTabs} role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={rightPanelTab === "info"}
+                className={`${styles.panelTab} ${
+                  rightPanelTab === "info" ? styles.activeTab : ""
+                }`}
+                onClick={() => setRightPanelTab("info")}
+              >
+                <span>ℹ️</span>
+                <span>Channel Info</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={rightPanelTab === "bot"}
+                className={`${styles.panelTab} ${
+                  rightPanelTab === "bot" ? styles.activeTab : ""
+                }`}
+                onClick={() => setRightPanelTab("bot")}
+              >
+                <span>🤖</span>
+                <span>Bot Assistant</span>
+              </button>
+            </div>
+            <button
+              type="button"
+              className={styles.closePanelButton}
+              onClick={() => setIsRightPanelOpen(false)}
+              title="Close panel"
+              aria-label="Close panel"
+            >
+              ×
+            </button>
+          </div>
 
-      <div className={styles.section}>
-        <BotAskPanel key={channelId} channelId={channelId} />
-      </div>
-
-      <div className={styles.section}>
-        <h2>Members</h2>
-
-        {canManageMembers && (
-          <InviteMemberForm channelId={channelId} onInvited={refreshMembers} />
-        )}
-
-        {roleError && <p className={styles.error}>{roleError}</p>}
-        {removeError && <p className={styles.error}>{removeError}</p>}
-
-        {members.length === 0 ? (
-          <p className={styles.status}>No members found for this channel.</p>
-        ) : (
-          <ul className={styles.memberList}>
-            {members.map((member) => (
-              <li key={member.id} className={styles.memberItem}>
-                <div>
-                  <p className={styles.memberEmail}>{member.email}</p>
+          {/* Tab 1: Channel Info (Details, Files, Members) */}
+          {rightPanelTab === "info" && (
+            <div className={styles.panelContent}>
+              <div className={styles.section}>
+                <h2>Channel Overview</h2>
+                <div className={styles.channelDetails}>
+                  <p className={styles.channelDetailsName}># {channel.name}</p>
+                  <p>
+                    Created {new Date(channel.created_at).toLocaleDateString()}
+                  </p>
+                  <p>
+                    {members.length} {members.length === 1 ? "member" : "members"}
+                    {" • "}
+                    {files.length} {files.length === 1 ? "file" : "files"}
+                  </p>
                 </div>
-                {canManageMembers ? (
-                  <div className={styles.memberActions}>
-                    <select
-                      className={styles.roleSelect}
-                      value={member.role}
-                      aria-label={`Role for ${member.email}`}
-                      disabled={
-                        updatingMemberId === member.user_id ||
-                        removingMemberId === member.user_id
-                      }
-                      onChange={(event) =>
-                        void handleRoleChange(
-                          member.user_id,
-                          event.target.value as ChannelMemberRole,
-                        )
-                      }
-                    >
-                      <option value="owner">Owner</option>
-                      <option value="admin">Admin</option>
-                      <option value="member">Member</option>
-                      <option value="read_only">Read only</option>
-                    </select>
-                    <button
-                      className={styles.removeButton}
-                      type="button"
-                      disabled={
-                        updatingMemberId === member.user_id ||
-                        removingMemberId === member.user_id
-                      }
-                      onClick={() =>
-                        void handleRemoveMember(member.user_id, member.email)
-                      }
-                    >
-                      {removingMemberId === member.user_id
-                        ? "Removing..."
-                        : "Remove"}
-                    </button>
-                  </div>
-                ) : (
-                  <span className={styles.roleBadge}>{member.role}</span>
+              </div>
+
+              <div id="section-files" className={styles.section}>
+                <div className={styles.sectionHeader}>
+                  <h2>Files</h2>
+                  <span className={styles.sectionCount}>{files.length}</span>
+                </div>
+                <FileUploadForm
+                  channelId={channelId}
+                  userRole={currentMember?.role}
+                  onUploaded={handleFileUploaded}
+                />
+                <FileList
+                  channelId={channelId}
+                  files={files}
+                  members={members}
+                  currentUserId={user?.id}
+                  currentUserRole={currentMember?.role}
+                  onFileDeleted={handleFileDeleted}
+                  onFileUpdated={handleFileUpdated}
+                />
+              </div>
+
+              <div id="section-members" className={styles.section}>
+                <div className={styles.sectionHeader}>
+                  <h2>Members</h2>
+                  <span className={styles.sectionCount}>{members.length}</span>
+                </div>
+
+                {canManageMembers && (
+                  <InviteMemberForm
+                    channelId={channelId}
+                    onInvited={refreshMembers}
+                  />
                 )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+
+                {roleError && <p className={styles.error}>{roleError}</p>}
+                {removeError && <p className={styles.error}>{removeError}</p>}
+
+                {members.length === 0 ? (
+                  <p className={styles.status}>
+                    No members found for this channel.
+                  </p>
+                ) : (
+                  <ul className={styles.memberList}>
+                    {members.map((member) => (
+                      <li key={member.id} className={styles.memberItem}>
+                        <div className={styles.memberInfo}>
+                          <div className={styles.memberAvatar}>
+                            {(member.username ?? member.email)
+                              .slice(0, 2)
+                              .toUpperCase()}
+                          </div>
+                          <div>
+                            <p className={styles.memberEmail}>{member.email}</p>
+                            {member.username && (
+                              <p className={styles.memberUsername}>
+                                @{member.username}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        {canManageMembers ? (
+                          <div className={styles.memberActions}>
+                            <select
+                              className={styles.roleSelect}
+                              value={member.role}
+                              aria-label={`Role for ${member.email}`}
+                              disabled={
+                                updatingMemberId === member.user_id ||
+                                removingMemberId === member.user_id
+                              }
+                              onChange={(event) =>
+                                void handleRoleChange(
+                                  member.user_id,
+                                  event.target.value as ChannelMemberRole,
+                                )
+                              }
+                            >
+                              <option value="owner">Owner</option>
+                              <option value="admin">Admin</option>
+                              <option value="member">Member</option>
+                              <option value="read_only">Read only</option>
+                            </select>
+                            <button
+                              className={styles.removeButton}
+                              type="button"
+                              disabled={
+                                updatingMemberId === member.user_id ||
+                                removingMemberId === member.user_id
+                              }
+                              onClick={() =>
+                                void handleRemoveMember(
+                                  member.user_id,
+                                  member.email,
+                                )
+                              }
+                            >
+                              {removingMemberId === member.user_id
+                                ? "Removing..."
+                                : "Remove"}
+                            </button>
+                          </div>
+                        ) : (
+                          <span className={styles.roleBadge}>{member.role}</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Tab 2: Bot Assistant */}
+          {rightPanelTab === "bot" && (
+            <div className={styles.botPanelWrapper}>
+              <BotAskPanel channelId={channelId} />
+            </div>
+          )}
+        </aside>
+      )}
     </section>
   );
 }
