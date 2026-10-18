@@ -22,6 +22,8 @@ def parse_pdf(file_bytes: bytes) -> list[tuple[int, str]]:
                 except Exception as e:
                     raise ParsingError(f"Error extracting text from page {page_num}: {str(e)}") from e
         return pages_content
+    except ParsingError:
+        raise
     except Exception as e:
         if "PDF" in str(e) or "format" in str(e).lower():
             raise ParsingError(f"Failed to parse PDF document: {str(e)}") from e

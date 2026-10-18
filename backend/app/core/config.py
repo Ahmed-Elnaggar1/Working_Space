@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = "gemini-3.8-flash"
     EMBEDDING_DIMENSION: int = 384
     EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
+    CHUNK_SIZE: int = 1000
+    CHUNK_OVERLAP: int = 150
 
     AWS_ENDPOINT_URL: str | None = None
     AWS_ACCESS_KEY_ID: str | None = None

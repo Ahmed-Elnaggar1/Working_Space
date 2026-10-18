@@ -146,6 +146,29 @@ def test_parse_unsupported_type():
     assert "Unsupported file type" in str(exc_info.value)
 
 
+def test_parse_pdf_preserves_page_extraction_error(monkeypatch):
+    import pdfplumber
+
+    class BrokenPage:
+        def extract_text(self):
+            raise RuntimeError("font table corrupted")
+
+    class DummyPDF:
+        pages = [BrokenPage()]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(pdfplumber, "open", lambda *_args, **_kwargs: DummyPDF())
+
+    with pytest.raises(ParsingError) as exc_info:
+        parse_file("broken.pdf", b"%PDF-1.4 dummy")
+    assert str(exc_info.value) == "Error extracting text from page 1: font table corrupted"
+
+
 # ==================== CHUNKER TESTS ====================
 
 def test_chunker_retains_page_numbers():
@@ -170,10 +193,38 @@ def test_chunker_extracts_section_headings():
         (1, "# Introduction\nThis is the introductory text for page one."),
         (2, "## Methodology\nDetails about the method used on page two."),
     ]
-    chunks = chunk_parsed_content(pages, max_words=300, overlap=50)
+    chunks = chunk_parsed_content(pages, chunk_size=1000, chunk_overlap=150)
     assert len(chunks) == 2
     assert chunks[0]["section"] == "Introduction"
     assert chunks[1]["section"] == "Methodology"
+
+
+def test_chunker_multiple_sections_per_page_and_carryover():
+    pages = [
+        (
+            1,
+            "# Overview\nOverview paragraph on page one.\n"
+            "# Architecture\nArchitecture paragraph on page one.",
+        ),
+        (
+            2,
+            "Continuation of architecture on page two.\n"
+            "## Deployment\nDeployment details on page two.",
+        ),
+        (
+            3,
+            "Continuation of deployment on page three without a new heading.",
+        ),
+    ]
+    chunks = chunk_parsed_content(pages, chunk_size=1000, chunk_overlap=150)
+
+    assert [(c["page_number"], c["section"]) for c in chunks] == [
+        (1, "Overview"),
+        (1, "Architecture"),
+        (2, "Architecture"),
+        (2, "Deployment"),
+        (3, "Deployment"),
+    ]
 
 
 # ==================== EMBEDDINGS TESTS ====================
@@ -189,11 +240,16 @@ def test_embeddings_generation_dimension_and_determinism():
     # Check custom dimension support
     custom_emb = generate_embedding(text, dimension=1536)
     assert len(custom_emb) == 1536
+
+    truncated_emb = generate_embedding(text, dimension=128)
+    assert len(truncated_emb) == 128
     
     # Check L2 Normalization (norm should be ~1.0)
     import math
     norm = math.sqrt(sum(x*x for x in emb1))
     assert abs(norm - 1.0) < 1e-5
+    norm_trunc = math.sqrt(sum(x*x for x in truncated_emb))
+    assert abs(norm_trunc - 1.0) < 1e-5
 
 
 # ==================== PIPELINE AND STATUS TRANSITIONS TESTS ====================
